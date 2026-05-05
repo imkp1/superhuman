@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Superhuman — Strategy & Working</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..900,0..100;1,9..144,300..900,0..100&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#f1ebdd;
+  --paper-2:#e7e0cf;
+  --ink:#14130f;
+  --ink-soft:#4a4739;
+  --cinnabar:#c63d22;
+  --cinnabar-d:#9a2e18;
+  --ochre:#d4a02a;
+  --navy:#1e2e4a;
+  --grid:rgba(20,19,15,.055);
+  --grid-2:rgba(20,19,15,.12);
+  --display:'Fraunces',serif;
+  --sans:'Instrument Sans',sans-serif;
+  --mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{
+  font-family:var(--sans);
+  color:var(--ink);
+  background:var(--paper);
+  background-image:
+    linear-gradient(var(--grid) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:44px 44px;
+  -webkit-font-smoothing:antialiased;
+  font-feature-settings:"ss01","ss02","cv11";
+}
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:200;
+  opacity:.32;mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .08 0 0 0 0 .07 0 0 0 0 .06 0 0 0 .6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size:220px 220px;
+}
+body::after{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:90;
+  background:radial-gradient(ellipse at center,transparent 60%,rgba(20,19,15,.08) 100%);
+}
+.deck{position:relative;width:100vw;height:100vh}
+.slide{
+  position:absolute;inset:0;
+  padding:clamp(36px,5vh,64px) clamp(52px,6vw,104px) 92px;
+  display:flex;flex-direction:column;
+  opacity:0;pointer-events:none;
+  transition:opacity .55s ease;
+  overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--grid-2) transparent;
+}
+.slide::-webkit-scrollbar{width:6px}
+.slide::-webkit-scrollbar-thumb{background:var(--grid-2)}
+.slide::-webkit-scrollbar-track{background:transparent}
+.slide.active{opacity:1;pointer-events:auto}
+.slide.active .reveal{animation:rise .9s cubic-bezier(.2,.7,.1,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:translateY(0)}}
+.r1{animation-delay:.08s}.r2{animation-delay:.18s}.r3{animation-delay:.30s}
+.r4{animation-delay:.42s}.r5{animation-delay:.54s}.r6{animation-delay:.66s}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:.001ms !important;animation-delay:0 !important;
+    transition-duration:.001ms !important;
+  }
+  .slide{transition:opacity .001ms ease}
+  .dot{transition:none}
+}
+
+.top{
+  display:flex;justify-content:space-between;align-items:flex-start;
+  font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-soft);
+}
+.top .brand{display:flex;gap:14px;align-items:center}
+.top .brand::before{
+  content:'';display:block;width:11px;height:11px;
+  background:var(--cinnabar);border-radius:50%;
+  box-shadow:0 0 0 2px var(--paper),0 0 0 3px var(--cinnabar);
+}
+.top .brand b{color:var(--ink);font-weight:600;letter-spacing:.22em}
+.top .meta{display:flex;gap:28px}
+.top .meta span i{font-style:normal;color:var(--ink);font-weight:600}
+
+.eyebrow{
+  font-family:var(--mono);font-size:11px;
+  text-transform:uppercase;letter-spacing:.22em;color:var(--cinnabar);
+  display:flex;align-items:center;gap:12px;
+}
+.eyebrow::before{content:'';width:34px;height:1px;background:var(--cinnabar);}
+.display{
+  font-family:var(--display);font-weight:400;
+  letter-spacing:-.038em;line-height:.96;
+  font-variation-settings:'opsz' 144,'SOFT' 20;
+}
+.display em{
+  font-style:italic;font-variation-settings:'opsz' 144,'SOFT' 100;
+  color:var(--cinnabar);
+}
+
+.nav{
+  position:fixed;left:0;right:0;bottom:0;z-index:60;
+  padding:16px clamp(52px,6vw,104px);
+  display:flex;justify-content:space-between;align-items:center;
+  background:linear-gradient(to top,var(--paper) 40%,rgba(241,235,221,0));
+  font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;
+}
+.counter{display:flex;align-items:baseline;gap:10px}
+.counter .cur{
+  font-family:var(--display);font-size:38px;line-height:1;
+  font-weight:400;letter-spacing:-.04em;
+  font-variation-settings:'opsz' 144,'SOFT' 100;font-style:italic;
+  color:var(--cinnabar);
+}
+.counter .dash{display:inline-block;width:22px;height:1px;background:var(--ink);margin:0 4px 8px}
+.counter .tot{color:var(--ink-soft)}
+.dots{display:flex;gap:10px}
+.dot{
+  width:32px;height:3px;background:rgba(20,19,15,.2);
+  border:0;padding:0;cursor:pointer;transition:background .3s,transform .2s;
+}
+.dot:hover{background:var(--ink);transform:scaleY(1.6)}
+.dot.active{background:var(--cinnabar);transform:scaleY(1.6)}
+.controls{display:flex;gap:8px}
+.btn{
+  font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;background:transparent;color:var(--ink);
+  border:1px solid var(--ink);padding:10px 20px;cursor:pointer;
+  transition:all .2s;
+}
+.btn:hover:not(:disabled){background:var(--ink);color:var(--paper)}
+.btn:disabled{opacity:.25;cursor:not-allowed}
+.btn:focus-visible,.dot:focus-visible{
+  outline:2px solid var(--cinnabar);outline-offset:3px;
+}
+.dot{position:relative}
+.dot::after{
+  content:'';position:absolute;inset:-14px -4px;
+}
+:focus{outline:none}
+.kbd{font-family:var(--mono);font-size:10px;color:var(--ink-soft);display:flex;align-items:center;gap:8px;}
+.kbd kbd{border:1px solid var(--grid-2);padding:3px 7px;background:var(--paper-2);font-size:10px;}
+
+/* SLIDE 1 */
+.s1 .body{flex:1;display:grid;grid-template-columns:1.5fr 1fr;gap:72px;align-items:center;margin-top:20px;}
+.s1 h1{font-size:clamp(56px,8.6vw,148px)}
+.s1 h1 .stroke{position:relative;display:inline-block;}
+.s1 h1 .stroke::after{
+  content:'';position:absolute;left:-2%;right:-4%;
+  bottom:.1em;height:.22em;background:var(--cinnabar);opacity:.9;z-index:-1;
+  transform:skewX(-6deg);
+}
+.s1 .lede{
+  font-family:var(--display);font-weight:300;
+  font-size:clamp(17px,1.25vw,21px);line-height:1.5;
+  color:var(--ink-soft);max-width:46ch;margin-top:36px;
+  font-variation-settings:'opsz' 144,'SOFT' 80;
+}
+.s1 .lede b{color:var(--ink);font-weight:500}
+.s1 .bet{border-left:1px solid var(--ink);padding:6px 0 6px 36px;}
+.s1 .bet h3{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;margin-bottom:22px;color:var(--ink-soft);}
+.s1 .bet ol{list-style:none;counter-reset:b}
+.s1 .bet li{
+  counter-increment:b;
+  font-family:var(--display);font-size:19px;line-height:1.3;
+  padding:16px 0 16px 46px;border-top:1px solid var(--grid-2);
+  position:relative;font-weight:400;
+}
+.s1 .bet li:last-child{border-bottom:1px solid var(--grid-2)}
+.s1 .bet li::before{
+  content:counter(b,decimal-leading-zero);
+  position:absolute;left:0;top:20px;
+  font-family:var(--mono);font-size:11px;color:var(--cinnabar);letter-spacing:.1em;
+}
+.s1 .pullquote{
+  grid-column:1/-1;margin-top:16px;
+  font-family:var(--display);font-style:italic;font-weight:300;
+  font-size:clamp(22px,2vw,32px);line-height:1.25;
+  padding:32px 0 0;max-width:64ch;
+  border-top:3px solid var(--cinnabar);
+  font-variation-settings:'opsz' 144,'SOFT' 100;
+}
+.s1 .pullquote b{font-weight:600;font-style:normal;color:var(--cinnabar);font-variation-settings:'opsz' 144,'SOFT' 20;}
+
+/* SLIDE 2 */
+.s2 .head{display:grid;grid-template-columns:2fr 1fr;gap:56px;align-items:end;margin-bottom:18px}
+.s2 h1{font-size:clamp(46px,6vw,96px)}
+.s2 .sub{
+  font-family:var(--display);font-style:italic;font-size:19px;
+  color:var(--ink-soft);line-height:1.4;max-width:34ch;
+  font-variation-settings:'opsz' 144,'SOFT' 100;
+}
+.s2 .body{flex:1;display:grid;grid-template-columns:1.8fr 1fr;gap:56px;align-items:start;margin-top:20px}
+.s2 .agents{border-top:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink)}
+.s2 .row{
+  display:grid;grid-template-columns:60px 160px 1.3fr 1.8fr;
+  align-items:center;padding:16px 4px;
+  border-bottom:1px solid var(--grid-2);transition:background .2s;
+}
+.s2 .row:last-child{border-bottom:0}
+.s2 .row:hover{background:rgba(198,61,34,.05)}
+.s2 .row.head{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.22em;color:var(--ink-soft);padding:10px 4px;}
+.s2 .row .num{font-family:var(--mono);font-size:11px;color:var(--cinnabar);letter-spacing:.08em}
+.s2 .row .phase{
+  font-family:var(--display);font-size:23px;font-style:italic;font-weight:400;
+  font-variation-settings:'opsz' 144,'SOFT' 80;
+}
+.s2 .row .agent{font-family:var(--mono);font-size:13.5px;letter-spacing:-.01em}
+.s2 .row .agent::before{content:'▸ ';color:var(--cinnabar);opacity:.7}
+.s2 .row .output{font-size:15px;color:var(--ink-soft);line-height:1.35}
+.s2 .win h3{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;margin-bottom:22px;color:var(--ink-soft);}
+.s2 .win-card{padding:20px 0;border-top:1px solid var(--grid-2)}
+.s2 .win-card:last-child{border-bottom:1px solid var(--grid-2)}
+.s2 .win-card b{
+  font-family:var(--display);font-style:italic;font-weight:500;font-size:23px;
+  color:var(--cinnabar);display:block;margin-bottom:6px;
+  font-variation-settings:'opsz' 144,'SOFT' 100;
+}
+.s2 .win-card p{font-size:14.5px;line-height:1.45;color:var(--ink-soft)}
+
+/* SLIDE 3 */
+.s3 .head{margin-bottom:8px}
+.s3 h1{font-size:clamp(44px,5.5vw,86px);margin-top:10px}
+.s3 .body{flex:1;display:grid;grid-template-columns:1.5fr 1fr;gap:56px;align-items:start;margin-top:20px;min-height:0}
+.s3 .flow{position:relative;height:100%;min-height:0;display:flex;align-items:center;justify-content:center}
+.s3 .flow svg{width:100%;max-height:64vh;height:auto;color:var(--ink)}
+.s3 .side h3{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;margin-bottom:20px;color:var(--ink-soft);}
+.s3 .cap{display:grid;grid-template-columns:1fr 1fr;align-items:baseline;gap:16px;padding:20px 0;border-top:1px solid var(--grid-2);}
+.s3 .cap:last-of-type{border-bottom:1px solid var(--grid-2)}
+.s3 .cap .loc{font-family:var(--mono);font-size:13px;color:var(--ink-soft);letter-spacing:-.01em}
+.s3 .cap .loc b{color:var(--ink);font-weight:600}
+.s3 .cap .iter{
+  font-family:var(--display);font-size:60px;line-height:.9;
+  text-align:right;letter-spacing:-.04em;font-weight:400;
+  font-variation-settings:'opsz' 144,'SOFT' 40;
+}
+.s3 .cap .iter i{font-family:var(--mono);font-size:10px;color:var(--ink-soft);display:block;margin-top:8px;letter-spacing:.16em;text-transform:uppercase;font-style:normal;}
+.s3 .caption{
+  margin-top:32px;font-family:var(--display);font-style:italic;
+  font-size:17.5px;line-height:1.4;color:var(--cinnabar);max-width:34ch;
+  font-variation-settings:'opsz' 144,'SOFT' 100;
+}
+
+/* SLIDE 4 */
+.s4 .head{display:grid;grid-template-columns:1.4fr 1fr;gap:56px;align-items:end;margin-bottom:14px}
+.s4 h1{font-size:clamp(44px,5.2vw,84px)}
+.s4 .sub{font-family:var(--display);font-style:italic;font-size:18px;color:var(--ink-soft);line-height:1.4;font-variation-settings:'opsz' 144,'SOFT' 100;}
+.s4 .body{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:56px;margin-top:14px;min-height:0;overflow:hidden}
+.s4 .rails h3{display:flex;align-items:baseline;gap:18px;margin-bottom:14px;}
+.s4 .rails h3 em{
+  font-family:var(--display);font-style:italic;font-size:30px;font-weight:500;
+  font-variation-settings:'opsz' 144,'SOFT' 100;
+}
+.s4 .rails h3 span{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft);}
+.s4 .rails.hard h3 em{color:var(--cinnabar)}
+.s4 .rails.soft h3 em{color:var(--navy)}
+.s4 .rail-item{padding:14px 0 14px 40px;border-top:1px solid var(--grid-2);position:relative;}
+.s4 .rail-item:last-child{border-bottom:1px solid var(--grid-2)}
+.s4 .rail-item b{font-family:var(--mono);font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px;}
+.s4 .rails.hard .rail-item b{color:var(--cinnabar)}
+.s4 .rails.soft .rail-item b{color:var(--navy)}
+.s4 .rail-item p{font-size:13.5px;line-height:1.45}
+.s4 .rails.hard{counter-reset:hh}
+.s4 .rails.hard .rail-item::before{
+  counter-increment:hh;content:counter(hh,decimal-leading-zero);
+  position:absolute;left:0;top:16px;font-family:var(--mono);font-size:11px;
+  color:var(--cinnabar);letter-spacing:.08em;
+}
+.s4 .rails.soft{counter-reset:ss}
+.s4 .rails.soft .rail-item::before{
+  counter-increment:ss;content:counter(ss,decimal-leading-zero);
+  position:absolute;left:0;top:16px;font-family:var(--mono);font-size:11px;
+  color:var(--navy);letter-spacing:.08em;
+}
+.s4 .outcomes{grid-column:1/-1;margin-top:6px;padding-top:18px;border-top:1.5px solid var(--ink)}
+.s4 .outcomes h3{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;margin-bottom:12px;color:var(--ink-soft);display:flex;justify-content:space-between;}
+.s4 .outcomes h3 em{font-family:var(--display);font-style:italic;font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink);font-size:14px}
+.s4 .chips{display:flex;flex-wrap:wrap;gap:8px}
+.s4 .chip{font-family:var(--mono);font-size:11.5px;padding:8px 14px;border:1px solid var(--ink);background:transparent;text-transform:lowercase;letter-spacing:.02em;}
+.s4 .chip.good{background:var(--ink);color:var(--paper)}
+.s4 .chip.halt{border-color:var(--cinnabar);color:var(--cinnabar)}
+.s4 .chip.halt::before{content:'⚠ ';font-size:10px}
+
+/* SLIDE 5 */
+.s5 .head{display:grid;grid-template-columns:1.3fr 1fr;gap:56px;align-items:end;margin-bottom:14px}
+.s5 h1{font-size:clamp(42px,4.8vw,80px)}
+.s5 h1 em{color:var(--cinnabar);font-style:italic;font-variation-settings:'opsz' 144,'SOFT' 100;}
+.s5 .sub{font-family:var(--display);font-style:italic;font-size:18px;color:var(--ink-soft);line-height:1.4;font-variation-settings:'opsz' 144,'SOFT' 100;}
+.s5 .body{flex:1;display:grid;grid-template-columns:1.35fr 1fr;gap:56px;align-items:start;margin-top:18px;min-height:0}
+.s5 .terminal{
+  background:var(--ink);color:var(--paper);
+  padding:22px 26px 24px;font-family:var(--mono);font-size:12.5px;line-height:1.7;
+  box-shadow:14px 14px 0 var(--cinnabar);position:relative;
+  border-radius:3px;
+  max-height:62vh;overflow:hidden;
+}
+.s5 .terminal::before{
+  content:'';position:absolute;top:14px;left:18px;right:18px;height:12px;
+  background-image:radial-gradient(circle,#5a574c 5px,transparent 5.5px),radial-gradient(circle,#5a574c 5px,transparent 5.5px),radial-gradient(circle,#5a574c 5px,transparent 5.5px);
+  background-position:0 0,16px 0,32px 0;background-repeat:no-repeat;opacity:.5;
+}
+.s5 .terminal pre{margin-top:18px;white-space:pre-wrap;}
+.s5 .terminal .c{color:#8a8474}
+.s5 .terminal .h{color:var(--ochre);font-weight:600}
+.s5 .terminal .k{color:#80c67a}
+.s5 .terminal .a{color:#f27c66}
+.s5 .terminal .n{color:#e6dfcc}
+.s5 .principles h3{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;margin-bottom:16px;color:var(--ink-soft);}
+.s5 .principles ol{list-style:none;counter-reset:p}
+.s5 .principles li{
+  counter-increment:p;
+  padding:12px 0 12px 44px;border-top:1px solid var(--grid-2);
+  position:relative;font-family:var(--display);font-size:17.5px;line-height:1.3;
+  font-weight:400;
+}
+.s5 .principles li:last-child{border-bottom:1px solid var(--grid-2)}
+.s5 .principles li::before{
+  content:counter(p,decimal-leading-zero);
+  position:absolute;left:0;top:15px;font-family:var(--mono);font-size:11px;
+  color:var(--cinnabar);letter-spacing:.08em;
+}
+.s5 .principles li b{font-variation-settings:'opsz' 144,'SOFT' 80;font-style:italic;font-weight:500;color:var(--cinnabar);}
+
+.corner{position:absolute;font-family:var(--mono);font-size:10px;color:var(--ink-soft);letter-spacing:.14em;text-transform:uppercase;opacity:.8;}
+.corner.tr{top:clamp(36px,5vh,64px);right:clamp(52px,6vw,104px)}
+
+@media (max-width:900px){
+  .slide{padding:28px 24px 88px}
+  .s1 .body,.s2 .body,.s3 .body,.s4 .body,.s5 .body{grid-template-columns:1fr;gap:28px}
+  .s4 .head,.s5 .head,.s2 .head{grid-template-columns:1fr;gap:16px}
+  .s2 .row{grid-template-columns:40px 1fr;row-gap:6px}
+  .s2 .row .output{grid-column:1/-1;font-size:13.5px}
+  .s2 .row .agent{grid-column:1/-1}
+  .s2 .row.head{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="deck">
+
+<!-- SLIDE 1 -->
+<section class="slide s1 active" data-slide="1">
+  <header class="top reveal r1">
+    <div class="brand"><b>SUPERHUMAN</b><span>autonomous OSS contributor</span></div>
+    <div class="meta">
+      <span>v<i>0.2.1</i></span>
+      <span>Claude Code plugin</span>
+      <span>MIT</span>
+    </div>
+  </header>
+  <div class="corner tr reveal r1">01 / 05 — the premise</div>
+
+  <div class="body">
+    <div>
+      <div class="eyebrow reveal r2" style="margin-bottom:28px">The problem &amp; the bet</div>
+      <h1 class="display reveal r3">
+        AI-generated PRs <br>
+        are a <em>flood.</em><br>
+        Most <span class="stroke">don't merge.</span>
+      </h1>
+      <p class="lede reveal r4">
+        Maintainers are drowning in low-quality bot submissions. The contributors who
+        succeed are the ones who <b>read the repo's actual conventions</b>, run its
+        <b>actual CI</b>, and <b>respond to feedback</b> — before asking for review.
+      </p>
+    </div>
+
+    <aside class="bet reveal r5">
+      <h3>The bet — agent wins iff it</h3>
+      <ol>
+        <li>Reads the repo's actual conventions before writing a line</li>
+        <li>Runs the repo's actual CI before pushing a commit</li>
+        <li>Scores itself against a calibrated rubric before review</li>
+        <li>Stops early on hopeless runs — guards maintainer goodwill</li>
+      </ol>
+    </aside>
+
+    <blockquote class="pullquote reveal r6">
+      Not a chatbot that writes code. <b>A pipeline that ships PRs.</b>
+      &nbsp;One thin orchestrator, six specialists, one scorer, and a calibration
+      corpus that grows with every run.
+    </blockquote>
+  </div>
+</section>
+
+<!-- SLIDE 2 -->
+<section class="slide s2" data-slide="2">
+  <header class="top reveal r1">
+    <div class="brand"><b>SUPERHUMAN</b><span>architecture</span></div>
+    <div class="meta"><span>7 specialists</span><span>1 scorer</span><span>JSON on disk</span></div>
+  </header>
+  <div class="corner tr reveal r1">02 / 05 — strategy</div>
+
+  <div class="head reveal r2" style="margin-top:28px">
+    <div>
+      <div class="eyebrow" style="margin-bottom:22px">Strategy</div>
+      <h1 class="display">One <em>orchestrator.</em><br>Six specialists.</h1>
+    </div>
+    <p class="sub">The orchestrator does <em>zero</em> domain work. It sequences, locks,
+      and enforces thresholds. Everything else is a specialist with its own
+      context window, its own JSON contract, and its own swappable implementation.</p>
+  </div>
+
+  <div class="body">
+    <div class="agents reveal r3">
+      <div class="row head">
+        <div>#</div><div>phase</div><div>specialist</div><div>output</div>
+      </div>
+      <div class="row"><div class="num">01</div><div class="phase">Discover</div><div class="agent">repo-finder</div><div class="output">Ranked shortlist of high-value repos</div></div>
+      <div class="row"><div class="num">02</div><div class="phase">Select</div><div class="agent">issue-selector</div><div class="output">Top issue + skip-list (docs, fresh, competing PR)</div></div>
+      <div class="row"><div class="num">03</div><div class="phase">Profile</div><div class="agent">repo-profiler</div><div class="output">Conventions + CI allowlist + reviewer norms</div></div>
+      <div class="row"><div class="num">04</div><div class="phase">Plan</div><div class="agent">planner</div><div class="output">Profile-aware implementation plan</div></div>
+      <div class="row"><div class="num">05</div><div class="phase">Build</div><div class="agent">builder</div><div class="output">Draft PR on fork, CI-clean, impact-audited</div></div>
+      <div class="row"><div class="num">06</div><div class="phase">Review</div><div class="agent">reviewer-dispatcher</div><div class="output">Canonical findings from language specialist</div></div>
+      <div class="row"><div class="num">07</div><div class="phase">Resolve</div><div class="agent">resolve-comments</div><div class="output">Replies + new findings for the builder</div></div>
+      <div class="row"><div class="num">08</div><div class="phase">Score</div><div class="agent">merge-probability-scorer</div><div class="output">Score + outcome recorded to global corpus</div></div>
+    </div>
+
+    <aside class="win reveal r4">
+      <h3>Why this shape wins</h3>
+      <div class="win-card"><b>Swappable</b><p>Upgrading the reviewer doesn't touch the orchestrator. Every boundary is a JSON file on disk.</p></div>
+      <div class="win-card"><b>Context hygiene</b><p>Each agent runs in its own context window. No agent drowns in everything. No one-prompt monster.</p></div>
+      <div class="win-card"><b>Auditable</b><p>Every handoff is inspectable: <code style="font-family:var(--mono);font-size:12px;background:var(--paper-2);padding:1px 6px">current_contribution.json</code>, scores, outcomes, mistakes.</p></div>
+    </aside>
+  </div>
+</section>
+
+<!-- SLIDE 3 -->
+<section class="slide s3" data-slide="3">
+  <header class="top reveal r1">
+    <div class="brand"><b>SUPERHUMAN</b><span>the loop</span></div>
+    <div class="meta"><span>scorer-gated iteration</span><span>adaptive cap</span></div>
+  </header>
+  <div class="corner tr reveal r1">03 / 05 — the loop</div>
+
+  <div class="head reveal r2" style="margin-top:20px">
+    <div class="eyebrow" style="margin-bottom:20px">The working loop</div>
+    <h1 class="display">Score. Review. <br>Build. <em>Repeat.</em></h1>
+  </div>
+
+  <div class="body">
+    <div class="flow reveal r3">
+      <svg viewBox="0 0 620 720" xmlns="http://www.w3.org/2000/svg" fill="none" stroke-linecap="square">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor" stroke="none"/>
+          </marker>
+          <marker id="arrow-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="#c63d22" stroke="none"/>
+          </marker>
+        </defs>
+
+        <g>
+          <rect x="180" y="8" width="260" height="58" stroke="#14130f" stroke-width="1.5"/>
+          <text x="310" y="36" text-anchor="middle" font-family="Instrument Sans" font-size="14" font-weight="600" fill="#14130f">Draft PR on fork</text>
+          <text x="310" y="54" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#4a4739">initial build · CI green · pushed to origin</text>
+        </g>
+        <line x1="310" y1="66" x2="310" y2="98" stroke="#14130f" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <g transform="translate(310,140)">
+          <polygon points="0,-42 170,0 0,42 -170,0" fill="#f1ebdd" stroke="#14130f" stroke-width="1.5"/>
+          <text y="-4" text-anchor="middle" font-family="Instrument Sans" font-size="13" font-weight="500" fill="#14130f">Merged / closed</text>
+          <text y="14" text-anchor="middle" font-family="Instrument Sans" font-size="13" font-weight="500" fill="#14130f">externally?</text>
+        </g>
+        <line x1="480" y1="140" x2="560" y2="140" stroke="#c63d22" stroke-width="1.5" marker-end="url(#arrow-r)"/>
+        <text x="500" y="130" font-family="JetBrains Mono" font-size="10" fill="#c63d22" letter-spacing="0.1em">YES</text>
+        <text x="465" y="164" font-family="JetBrains Mono" font-size="9" fill="#c63d22">record → exit</text>
+        <line x1="310" y1="182" x2="310" y2="218" stroke="#14130f" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <text x="320" y="204" font-family="JetBrains Mono" font-size="10" fill="#4a4739" letter-spacing="0.1em">NO</text>
+
+        <g>
+          <rect x="160" y="222" width="300" height="62" fill="#c63d22" stroke="#14130f" stroke-width="1.5"/>
+          <text x="310" y="250" text-anchor="middle" font-family="Instrument Sans" font-size="14.5" font-weight="600" fill="#f1ebdd">merge-probability scorer</text>
+          <text x="310" y="270" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#f1ebdd" opacity="0.85">appends scores[]  ·  final ∈ [0, 100]</text>
+        </g>
+        <line x1="310" y1="284" x2="310" y2="318" stroke="#14130f" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <g>
+          <rect x="60" y="322" width="500" height="112" stroke="#14130f" stroke-width="1" stroke-dasharray="5 4"/>
+          <text x="310" y="343" text-anchor="middle" font-family="JetBrains Mono" font-size="10" letter-spacing="0.22em" fill="#4a4739">CHECK THRESHOLDS</text>
+          <text x="155" y="372" text-anchor="middle" font-family="Instrument Sans" font-size="14" font-weight="600" fill="#14130f">≥95 × 2 runs</text>
+          <text x="155" y="392" text-anchor="middle" font-family="Instrument Sans" font-size="12" fill="#4a4739">merge-ready</text>
+          <text x="155" y="414" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#c63d22" letter-spacing="0.1em">→ SHIP</text>
+          <text x="310" y="372" text-anchor="middle" font-family="Instrument Sans" font-size="14" font-weight="600" fill="#14130f">&lt; 50 after iter 5</text>
+          <text x="310" y="392" text-anchor="middle" font-family="Instrument Sans" font-size="12" fill="#4a4739">off-track</text>
+          <text x="310" y="414" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#c63d22" letter-spacing="0.1em">→ ABANDON</text>
+          <text x="465" y="372" text-anchor="middle" font-family="Instrument Sans" font-size="14" font-weight="600" fill="#14130f">plateau</text>
+          <text x="465" y="392" text-anchor="middle" font-family="Instrument Sans" font-size="12" fill="#4a4739">no new findings</text>
+          <text x="465" y="414" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#c63d22" letter-spacing="0.1em">→ STOP</text>
+        </g>
+
+        <line x1="310" y1="434" x2="310" y2="472" stroke="#14130f" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <text x="322" y="456" font-family="JetBrains Mono" font-size="10" fill="#4a4739" letter-spacing="0.08em">else continue</text>
+
+        <g>
+          <rect x="160" y="476" width="300" height="52" fill="#f1ebdd" stroke="#14130f" stroke-width="1.5"/>
+          <text x="310" y="500" text-anchor="middle" font-family="Instrument Sans" font-size="13.5" font-weight="500" fill="#14130f">reviewer-dispatcher</text>
+          <text x="310" y="516" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#4a4739">targets weakest scoring dimension</text>
+        </g>
+        <line x1="310" y1="528" x2="310" y2="560" stroke="#14130f" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <g>
+          <rect x="160" y="564" width="300" height="52" fill="#f1ebdd" stroke="#14130f" stroke-width="1.5"/>
+          <text x="310" y="588" text-anchor="middle" font-family="Instrument Sans" font-size="13.5" font-weight="500" fill="#14130f">builder · apply_findings</text>
+          <text x="310" y="604" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#4a4739">minimal diff · impact audit · pre-push CI</text>
+        </g>
+        <line x1="310" y1="616" x2="310" y2="648" stroke="#14130f" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <g>
+          <rect x="160" y="652" width="300" height="52" fill="#f1ebdd" stroke="#14130f" stroke-width="1.5"/>
+          <text x="310" y="676" text-anchor="middle" font-family="Instrument Sans" font-size="13.5" font-weight="500" fill="#14130f">resolve-comments</text>
+          <text x="310" y="692" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#4a4739">classify · reply · emit new findings</text>
+        </g>
+
+        <path d="M 160 678 L 40 678 L 40 254 L 160 254" stroke="#c63d22" stroke-width="1.5" fill="none" stroke-dasharray="6 4" marker-end="url(#arrow-r)"/>
+        <text font-family="JetBrains Mono" font-size="10" fill="#c63d22" letter-spacing="0.16em" transform="rotate(-90, 28, 466)" x="28" y="466">LOOP BACK TO SCORER</text>
+      </svg>
+    </div>
+
+    <aside class="side reveal r4">
+      <h3>Adaptive iteration cap</h3>
+      <div class="cap">
+        <div class="loc"><b>&lt; 20</b> LOC<br>typo / one-liner</div>
+        <div class="iter">3<i>max iters</i></div>
+      </div>
+      <div class="cap">
+        <div class="loc"><b>20 – 100</b> LOC<br>focused fix</div>
+        <div class="iter">6<i>max iters</i></div>
+      </div>
+      <div class="cap">
+        <div class="loc"><b>&gt; 100</b> LOC<br>feature / refactor</div>
+        <div class="iter">10<i>max iters</i></div>
+      </div>
+      <p class="caption">A typo fix doesn't get ten review rounds. A refactor does. The cap scales with the ask.</p>
+    </aside>
+  </div>
+</section>
+
+<!-- SLIDE 4 -->
+<section class="slide s4" data-slide="4">
+  <header class="top reveal r1">
+    <div class="brand"><b>SUPERHUMAN</b><span>safety model</span></div>
+    <div class="meta"><span>kernel locks · impact audits · halt states</span></div>
+  </header>
+  <div class="corner tr reveal r1">04 / 05 — rails</div>
+
+  <div class="head reveal r2" style="margin-top:16px">
+    <div>
+      <div class="eyebrow" style="margin-bottom:18px">Safety &amp; trust</div>
+      <h1 class="display">Hard rails.<br><em>Soft</em> rails.</h1>
+    </div>
+    <p class="sub">Hard rails are kernel-enforced or abort-on-violation. Soft rails are
+      calibrated thresholds — tuned against the real corpus of past merge
+      outcomes, not against intuition.</p>
+  </div>
+
+  <div class="body">
+    <div class="rails hard reveal r3">
+      <h3><em>Hard rails</em><span>non-negotiable</span></h3>
+      <div class="rail-item"><b>flock(2) mutex</b><p>One run per repo, enforced by the kernel — not by JSON bookkeeping.</p></div>
+      <div class="rail-item"><b>Fork-only push</b><p><code style="font-family:var(--mono);font-size:12px">origin</code> is the fork; <code style="font-family:var(--mono);font-size:12px">upstream</code> is the source — never written.</p></div>
+      <div class="rail-item"><b>AI-policy check</b><p>Reads <code style="font-family:var(--mono);font-size:12px">CONTRIBUTING.md</code>; aborts if AI-generated code is forbidden, quoting the line.</p></div>
+      <div class="rail-item"><b>Rate-limit guard</b><p>Refuses to start with &lt; 200 GitHub API calls remaining.</p></div>
+      <div class="rail-item"><b>Impact audit</b><p>Before any refactor: enumerate callers, classify contexts, block on surprise blast radius.</p></div>
+      <div class="rail-item"><b>Suspicious halt</b><p><code style="font-family:var(--mono);font-size:12px">resolve-comments</code> stops on prompt-injection in a review; human decides next step.</p></div>
+      <div class="rail-item"><b>Allowlisted CI</b><p>Builder only runs commands parsed out of <code style="font-family:var(--mono);font-size:12px">.github/workflows/*.yml</code>. No ad-hoc shell.</p></div>
+    </div>
+
+    <div class="rails soft reveal r4">
+      <h3><em>Soft rails</em><span>calibrated, tunable</span></h3>
+      <div class="rail-item"><b>95 × 2 ship threshold</b><p>Scorer must cross 95% on two consecutive runs — single spikes are not merge-ready.</p></div>
+      <div class="rail-item"><b>&lt; 50 after iter 5 abort</b><p>Low score after many rounds means the plan is wrong. Stop; let the human redirect.</p></div>
+      <div class="rail-item"><b>Weakest-first review</b><p>Dispatcher always targets the lowest-scoring dimension — no wasted passes on strong areas.</p></div>
+      <div class="rail-item"><b>Plateau detection</b><p>Scorer flags dimensions that won't improve; orchestrator stops burning cycles on them.</p></div>
+      <div class="rail-item"><b>Corpus calibration</b><p>Every outcome appends to <code style="font-family:var(--mono);font-size:12px">merge_outcomes.jsonl</code> — thresholds tune against real merges.</p></div>
+      <div class="rail-item"><b>Mistakes logbook</b><p>Every CI failure, impact block, or crash appends to <code style="font-family:var(--mono);font-size:12px">mistakes.md</code> — growing institutional memory.</p></div>
+
+      <div class="outcomes" style="margin-top:22px">
+        <h3><span>Every outcome is recorded</span><em>wins &amp; losses</em></h3>
+        <div class="chips">
+          <span class="chip good">merged</span>
+          <span class="chip good">merge_ready</span>
+          <span class="chip">abandoned</span>
+          <span class="chip">plateau</span>
+          <span class="chip">closed_no_merge</span>
+          <span class="chip halt">impact_audit_blocked</span>
+          <span class="chip halt">suspicious_halt</span>
+          <span class="chip halt">crash</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 5 -->
+<section class="slide s5" data-slide="5">
+  <header class="top reveal r1">
+    <div class="brand"><b>SUPERHUMAN</b><span>the output</span></div>
+    <div class="meta"><span>merge-ready PR + corpus row</span></div>
+  </header>
+  <div class="corner tr reveal r1">05 / 05 — what ships</div>
+
+  <div class="head reveal r2" style="margin-top:18px">
+    <div>
+      <div class="eyebrow" style="margin-bottom:18px">What ships</div>
+      <h1 class="display">A merge-ready PR.<br>A row in the <em>corpus.</em></h1>
+    </div>
+    <p class="sub">One run leaves behind a real pull request the maintainer can merge —
+      and a record that makes the next run smarter. The loop closes around the
+      calibration data, not the model.</p>
+  </div>
+
+  <div class="body">
+    <div class="reveal r3">
+      <div class="terminal">
+<pre><span class="c"># Contribution run — apache/airflow <span class="h">#65685</span></span>
+
+Outcome:      <span class="k">merge_ready</span>
+Iterations:   4 / 6
+Final score:  <span class="h">96%</span>
+PR:           https://github.com/apache/airflow/pull/66010
+Branch:       fix/65685-auth-role-public
+
+<span class="c">Scores over time:</span>
+  iter 1:  68%   <span class="c">(weak: process, test_coverage)</span>
+  iter 2:  79%
+  iter 3:  92%
+  iter 4:  <span class="h">96%  ← threshold crossed</span>
+
+<span class="c">Dispatched agents:</span>
+  repo-profiler         <span class="a">›</span> 1
+  issue-selector        <span class="a">›</span> 1
+  planner               <span class="a">›</span> 1
+  builder               <span class="a">›</span> 5  <span class="c">(1 initial + 4 apply_findings)</span>
+  reviewer-dispatcher   <span class="a">›</span> 4
+  resolve-comments      <span class="a">›</span> 2
+  scorer                <span class="a">›</span> 5  <span class="c">(4 score + 1 record_outcome)</span>
+
+Mistakes logged: 1  <span class="c">builder:ci_gate — pytest failure fixed iter 2</span></pre>
+      </div>
+    </div>
+
+    <aside class="principles reveal r4">
+      <h3>Operating principles</h3>
+      <ol>
+        <li><b>Dispatch;</b> don't implement.</li>
+        <li><b>One contribution</b> at a time per repo.</li>
+        <li>Two consecutive <b>≥ 95</b> runs, never one.</li>
+        <li><b>Abort early</b> on hopeless runs.</li>
+        <li>Record <b>every</b> outcome — wins and losses.</li>
+        <li><b>Surface,</b> don't retry, on security halts.</li>
+        <li><b>Fork-only</b> push target, always.</li>
+      </ol>
+    </aside>
+  </div>
+</section>
+
+</div>
+
+<nav class="nav">
+  <div class="counter">
+    <span class="cur" id="curNum">01</span>
+    <span class="dash"></span>
+    <span class="tot">05</span>
+  </div>
+  <div class="dots" id="dots"></div>
+  <div class="kbd"><kbd>←</kbd><kbd>→</kbd><span>navigate</span></div>
+  <div class="controls">
+    <button class="btn" id="prev">← prev</button>
+    <button class="btn" id="next">next →</button>
+  </div>
+</nav>
+
+<script>
+(function(){
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  const dotsEl = document.getElementById('dots');
+  const curEl = document.getElementById('curNum');
+  const prev = document.getElementById('prev');
+  const next = document.getElementById('next');
+  let idx = 0;
+
+  for(let i=0;i<total;i++){
+    const d = document.createElement('button');
+    d.className = 'dot' + (i===0?' active':'');
+    d.setAttribute('aria-label', 'Go to slide '+(i+1));
+    if(i===0) d.setAttribute('aria-current', 'true');
+    d.addEventListener('click', ()=>go(i));
+    dotsEl.appendChild(d);
+  }
+  const dots = dotsEl.querySelectorAll('.dot');
+
+  function pad(n){return String(n).padStart(2,'0');}
+
+  function go(i){
+    i = Math.max(0, Math.min(total-1, i));
+    if(i===idx) return;
+    slides[idx].classList.remove('active');
+    dots[idx].classList.remove('active');
+    dots[idx].removeAttribute('aria-current');
+    idx = i;
+    slides[idx].offsetHeight;
+    slides[idx].classList.add('active');
+    dots[idx].classList.add('active');
+    dots[idx].setAttribute('aria-current', 'true');
+    curEl.textContent = pad(idx+1);
+    prev.disabled = idx===0;
+    next.disabled = idx===total-1;
+  }
+  prev.disabled = true;
+
+  prev.addEventListener('click', ()=>go(idx-1));
+  next.addEventListener('click', ()=>go(idx+1));
+
+  document.addEventListener('keydown', e=>{
+    if(e.key==='ArrowRight' || e.key===' ' || e.key==='PageDown') { e.preventDefault(); go(idx+1); }
+    else if(e.key==='ArrowLeft' || e.key==='PageUp') { e.preventDefault(); go(idx-1); }
+    else if(e.key==='Home') go(0);
+    else if(e.key==='End') go(total-1);
+    else if(/^[1-5]$/.test(e.key)) go(parseInt(e.key,10)-1);
+  });
+
+  let xStart=null;
+  document.addEventListener('touchstart', e=>{xStart=e.touches[0].clientX;},{passive:true});
+  document.addEventListener('touchend', e=>{
+    if(xStart===null) return;
+    const dx = e.changedTouches[0].clientX - xStart;
+    if(Math.abs(dx)>50) go(idx + (dx<0?1:-1));
+    xStart=null;
+  });
+})();
+</script>
+</body>
+</html>
