@@ -408,6 +408,29 @@ Dispatch `merge-probability-scorer` one last time with `MODE=record_outcome`,
 passing `PR_URL`, `OUTCOME`, `ITERATION_COUNT`, `LAST_SCORE_ENTRY`. Scorer
 appends the JSONL line to `global/merge_outcomes.jsonl`.
 
+If this run is part of a fleet dispatch (`$FLEET_ID` set by
+`/contribution-fleet`), append the per-repo terminal line to the fleet
+log so the launcher's Step 5 aggregator can render the summary table:
+
+```bash
+if [ -n "$FLEET_ID" ]; then
+  FLEET_LOG="$HOME/.superhuman/global/fleet_runs.jsonl"
+  mkdir -p "$(dirname "$FLEET_LOG")"
+  jq -c -n \
+    --arg id "$FLEET_ID" \
+    --arg repo "$OWNER_REPO" \
+    --arg outcome "$OUTCOME" \
+    --argjson iters "${ITERATION:-0}" \
+    --arg pr "${PR_URL:-}" \
+    --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{fleet_id:$id, repo:$repo, outcome:$outcome,
+      iterations:$iters,
+      pr_url:(if $pr == "" then null else $pr end),
+      completed_at:$ts}' \
+    >> "$FLEET_LOG"
+fi
+```
+
 Clear the lock:
 
 ```bash
