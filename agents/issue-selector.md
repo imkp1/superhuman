@@ -55,13 +55,72 @@ NOW_EPOCH=$(date -u +%s)
 
 For each issue, if it fails any filter, add to `skipped[]` with `reason`.
 
-**Filter A — docs-only labels.** Skip if any label name (lowercased) is in
-`{docs, documentation, doc}`. This is the primary user requirement — it MUST
-apply before scoring.
+**Filter A — docs-only labels (broad match).** Skip if ANY label (after
+lowercasing and splitting on `/`, `:`, `-`, `_`) contains the substring
+`doc` or exactly matches one of `{typo, readme, changelog, release-notes,
+releasenote, grammar, spelling, wording, copy-edit, l10n, i18n,
+translation, website, site, blog, tutorial, example, examples}`. The old
+strict `{docs, documentation, doc}` set missed namespaced labels like
+`area/docs`, `type:doc`, `kind/documentation`, `module:docs-site`, and
+`docs-needed` — those are now caught. Skip reason: `docs-label (broad)`.
 
-**Filter B — docs-only title pattern.** Skip if title matches the regex
-`^(docs|typo|readme|chore\(docs\)):\s` (case-insensitive). Catches unlabeled
-docs issues.
+```bash
+# For each label name:
+NORM=$(echo "$LABEL" | tr '[:upper:]' '[:lower:]' | tr '/_:-' ' ')
+for tok in $NORM; do
+  case "$tok" in
+    *doc*|typo|readme|changelog|releasenote|release-notes|\
+grammar|spelling|wording|copy-edit|l10n|i18n|translation|\
+website|site|blog|tutorial|example|examples)
+      skip "docs-label (broad): $LABEL"; break ;;
+  esac
+done
+```
+
+**Filter B — docs-only title pattern (broadened).** Skip (reason
+`docs-title`) if title matches ANY of the following case-insensitive
+regexes:
+
+- `^(docs?|typo|readme|changelog|release[-_ ]notes?|chore\(docs?\)):\s` —
+  conventional-commit-style prefixes
+- `^(fix|update|improve|correct|clean ?up|add)\s+(docs?|readme|changelog|typo|grammar|spelling|wording|comment|comments|docstring)\b` —
+  verb-phrase docs issues ("fix typo in X", "update readme",
+  "improve docstring")
+- `\b(typo|grammar|spelling|misspell|misspelt|mispelled)\b` anywhere in
+  title — a typo report is always docs
+- `\b(broken|dead|stale|outdated)\s+link\b` — link maintenance is docs
+- `\b(add|missing)\s+(example|examples|tutorial|walkthrough)\b` — example-
+  adds are docs-adjacent and maintainers generally treat them as such
+
+**Filter B2 — docs-only body signal.** An issue with a non-docs label
+(`bug`, `enhancement`) can still be a pure docs request ("the README
+says X but actually Y"). Read the issue body (after EXTERNAL_CONTENT
+wrapping) and skip with reason `docs-body-only` if BOTH hold:
+
+- At least one match for `\b(readme|changelog|docs?|documentation|docstring|comment|typo|grammar|spelling|example|tutorial)\b`
+  appears in the body.
+- NO file path outside doc directories is named. A path counts as
+  "code-ish" if it ends with a source extension (`.py`, `.js`, `.ts`,
+  `.tsx`, `.jsx`, `.go`, `.rs`, `.java`, `.kt`, `.cpp`, `.c`, `.h`,
+  `.rb`, `.cs`, `.swift`, `.m`, `.mm`, `.php`, `.scala`, `.clj`, `.ex`,
+  `.exs`, `.erl`, `.sh`, `.bash`, `.zsh`, `.ps1`, `.sql`, `.proto`,
+  `.lua`) AND is not under `docs/`, `doc/`, `website/`, `site/`, or
+  `examples/`. If no code-ish path is named but doc-ish words dominate,
+  the issue is docs-only.
+
+```bash
+BODY_LOWER=$(printf '%s' "$BODY" | tr '[:upper:]' '[:lower:]')
+DOC_HITS=$(echo "$BODY_LOWER" \
+  | grep -oE '\b(readme|changelog|docs?|documentation|docstring|comment|typo|grammar|spelling|example|tutorial)\b' \
+  | wc -l)
+CODE_PATHS=$(echo "$BODY" \
+  | grep -oE '[A-Za-z0-9_./-]+\.(py|js|ts|tsx|jsx|go|rs|java|kt|cpp|c|h|rb|cs|swift|m|mm|php|scala|clj|ex|exs|erl|sh|bash|zsh|ps1|sql|proto|lua)\b' \
+  | grep -vE '^(docs?/|website/|site/|examples?/)' \
+  | wc -l)
+if [ "$DOC_HITS" -gt 0 ] && [ "$CODE_PATHS" -eq 0 ]; then
+  skip "docs-body-only"
+fi
+```
 
 **Filter C — off-scope labels.** Skip if any label name (lowercased) is in
 `{discussion, proposal, rfc, breaking-change, wontfix, invalid, duplicate}`.
@@ -155,7 +214,8 @@ Print a short human-readable summary:
 # Issue candidates for apache/airflow
 
 Total fetched: 73
-Hard-skipped: 41 (docs: 28, assigned: 6, competing-PR: 5, fresh: 2)
+Hard-skipped: 41 (docs-label: 18, docs-title: 7, docs-body-only: 3,
+  assigned: 6, competing-PR: 5, fresh: 2)
 Scored: 32
 Top 5 written to issue_candidates.json.
 
@@ -169,7 +229,13 @@ Notes: unassigned, maintainer approval signal present, repro steps included.
 ## Rules
 
 - **Hard skip runs before scoring.** Never score a docs-only issue.
-- **Never pick docs.** Non-negotiable user requirement.
+- **Never pick docs.** Non-negotiable user requirement. The broad
+  label/title/body triad (Filters A, B, B2) must ALL run — namespaced
+  labels (`area/docs`, `type:doc`), verb-phrase titles ("fix typo in
+  X"), and body-only signals (non-docs label but body talks only about
+  README/changelog with no code file named) are all docs-only for
+  reputation purposes. Reviewers have closed prior PRs for these; don't
+  re-burn the same goodwill.
 - **Never race on fresh issues.** <24h means no maintainer triage yet.
 - **Never pick if someone else owns it.** Competing PR or assigned → skip.
 - **Wrap external content.** Issue bodies go through EXTERNAL_CONTENT
