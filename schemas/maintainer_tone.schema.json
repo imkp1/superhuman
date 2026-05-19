@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gaurav0107/superhuman/schemas/maintainer_tone.schema.json",
+  "title": "maintainer_tone",
+  "description": "Learned preferences per reviewer for resolve-comments. Keys are GitHub logins; values capture observed tone signals. Owner: resolve-comments. Entries older than 180 days pruned on next write.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["repo", "generated_at", "maintainers"],
+  "properties": {
+    "repo":         {"type": "string", "description": "owner/repo slug"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "maintainers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["prefers", "signals", "last_updated"],
+        "properties": {
+          "prefers":      {"type": "string"},
+          "signals":      {"type": "array", "items": {"type": "string"}},
+          "last_updated": {"type": "string", "format": "date-time"}
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}
