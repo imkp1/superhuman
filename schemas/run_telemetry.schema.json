@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gaurav0107/superhuman/schemas/run_telemetry.schema.json",
+  "title": "run_telemetry",
+  "description": "Single line of run_telemetry.jsonl. One record per phase-completion. Owner: any phase that calls emit_telemetry.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["ts", "iteration", "phase", "duration_s", "outcome"],
+  "properties": {
+    "ts":          {"type": "string", "format": "date-time"},
+    "iteration":   {"type": "integer"},
+    "phase": {
+      "type": "string",
+      "enum": [
+        "repo-profiler",
+        "issue-selector",
+        "planner",
+        "builder:initial",
+        "builder:apply_findings",
+        "builder:apply_comments",
+        "scorer",
+        "reviewer-dispatcher",
+        "resolve-comments"
+      ]
+    },
+    "duration_s":  {"type": "number"},
+    "outcome":     {"type": "string"}
+  }
+}
