@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gaurav0107/superhuman/schemas/generated_files.schema.json",
+  "title": "generated_files",
+  "description": "Catalog of auto-generated files the builder must not hand-edit. repo-profiler populates by scanning for AUTO-GENERATED, DO NOT EDIT, @generated, openapi-generator, protoc, prisma generate, swagger-codegen markers. If regenerate_cmd is null, builder skips the file and records a mistake under builder:generated_file_blocked.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["repo", "generated_at", "entries"],
+  "properties": {
+    "repo": {
+      "type": "string",
+      "description": "owner/repo slug"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when this catalog was generated"
+    },
+    "entries": {
+      "type": "array",
+      "description": "List of auto-generated files found in the repo",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["path", "marker", "regenerate_cmd"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Repo-relative path to the generated file"
+          },
+          "marker": {
+            "type": "string",
+            "description": "The generator marker string found in the file header (e.g. AUTO-GENERATED, @generated)"
+          },
+          "regenerate_cmd": {
+            "oneOf": [
+              {"type": "string"},
+              {"type": "null"}
+            ],
+            "description": "Shell command to regenerate the file; null if no known command (builder skips and records builder:generated_file_blocked)"
+          }
+        }
+      }
+    }
+  }
+}
