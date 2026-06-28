@@ -7,7 +7,7 @@ SCHEMA="$CLAUDE_PLUGIN_ROOT/schemas/run_telemetry.schema.json"
 tmpdir=$(mktemp -d)
 
 cat > "$tmpdir/ok.json" <<'EOF'
-{"ts":"2026-05-01T12:00:00Z","iteration":1,"phase":"builder:initial","duration_s":142,"outcome":"ok"}
+{"ts":"2026-05-01T12:00:00Z","iteration":1,"phase":"builder:initial","duration_s":142,"outcome":"ok","mode":"inline"}
 EOF
 validate_json "$SCHEMA" "$tmpdir/ok.json" || { echo "FAIL valid"; exit 1; }
 

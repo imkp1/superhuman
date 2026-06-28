@@ -1,24 +1,76 @@
 # superhuman
 
-Autonomous open-source contribution plugin for [Claude Code](https://claude.com/claude-code).
+> A multi-agent **harness** that contributes merge-quality pull requests to real open-source projects — and a **closed feedback loop** that scores its own work and iterates until a maintainer would merge it.
 
-Ships a coordinated team of agents that picks an issue, profiles the repo, writes a plan, implements it, scores merge probability, iterates on the weakest dimension, and resolves review comments — all without hand-holding. State lives at `~/.superhuman/` and survives across sessions.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Version](https://img.shields.io/badge/version-0.5.1-green.svg)](./CHANGELOG.md)
+[![Platform](https://img.shields.io/badge/platform-Claude%20Code-8A2BE2.svg)](https://claude.com/claude-code)
 
-> **v0.5.0** — bash extracted from agent prompts into versioned scripts under `scripts/`, JSON schemas formalised under `schemas/`, three new loop primitives: `/contribute`, `/repo-finder`, `/contribute-loop`. Safety prose (single-author rule, force-with-lease, suspicious-halt) stays inline in agent prompts where it belongs. No new plugin dependencies.
+Most agent tools are **open-loop**: generate once, hope it's good. superhuman is **closed-loop**. It scores its own pull request before opening it, finds the single weakest dimension, spends an iteration fixing exactly that, re-scores, and repeats until it converges. It's gradient descent on one objective — *will a maintainer merge this?* — with a prior learned from every past outcome.
 
-## What it does
+A coordinated team of agents picks an issue, profiles the repo, plans, builds, scores merge probability, iterates on the weakest dimension, and resolves review comments — autonomously. State lives at `~/.superhuman/` and survives across sessions.
 
-Run `Agent(subagent_type="opensource-contributor", ...)` (or `/contribution-fleet` for parallel runs) and the orchestrator will:
+## Proven on
 
-1. **Pick a repo** — `repo-finder` scores candidates by maintainer responsiveness, issue velocity, and AI-friendliness.
-2. **Pick an issue** — `issue-selector` hard-skips docs-only, competing-PR, and <24h issues; ranks the rest by merge-likelihood.
-3. **Profile the repo** — `repo-profiler` samples the last 10–20 merged PRs to extract commit conventions, PR body structure, test runner, lint commands, and a CI command allowlist.
-4. **Plan** — `planner` wraps `superpowers:writing-plans` with repo-aware context (profile + reviewer notes + mistakes log) and returns an executable plan.
-5. **Build** — `builder` wraps `superpowers:subagent-driven-development`, runs `impact-auditor` before refactoring shared functions, runs allowlisted local CI pre-push, and force-pushes to a fork.
-6. **Score** — `merge-probability-scorer` rates the PR across 10 weighted dimensions (correctness, tests, style, PR format, process compliance, scope, docs, commit hygiene, risk, historical signal).
-7. **Iterate** — `reviewer-dispatcher` picks the weakest non-plateaued dimension, routes to a language-specialist reviewer (python/go/ts/java/kotlin/rust/cpp/csharp/flutter/security), feeds findings back to the builder. Adaptive cap: 3/6/10 iterations by diff size; stops at 95% probability over two consecutive runs.
-8. **Resolve comments** — `resolve-comments` classifies each review comment (suspicious / question / nit / refactor / concern), drafts replies, dispatches fixes, and halts on prompt-injection attempts.
-9. **Record outcome** — merged or abandoned, the result lands in `~/.superhuman/global/merge_outcomes.jsonl` and calibrates the scorer's historical-signal dimension for future runs.
+superhuman has authored merged pull requests into repositories it doesn't own, across Python, Rust, TypeScript, Kotlin, and C++:
+
+| Repository | PR | Fix |
+|---|---|---|
+| [huggingface/transformers](https://github.com/huggingface/transformers/pull/45611) | #45611 | Clear error for `problem_type="single_label_classification"` with `num_labels=1` |
+| [apache/airflow](https://github.com/apache/airflow/pull/65685) | #65685 | Honor `AUTH_ROLE_PUBLIC` in the FastAPI API server |
+| [google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli/pull/25822) | #25822 | Missing response key in custom theme text schema |
+| [ant-design/ant-design](https://github.com/ant-design/ant-design/pull/58241) | #58241 | Apply `labelStyle`/`contentStyle` to bordered `Descriptions` cells |
+| [oxc-project/oxc](https://github.com/oxc-project/oxc/pull/23015) | #23015 | `jsx-a11y/no-redundant-roles` attribute-aware implicit roles |
+| [pydantic/pydantic-ai](https://github.com/pydantic/pydantic-ai/pull/5681) | #5681 | Fix `GoogleModelSettings.google_cached_content` request shaping |
+| [Lightning-AI/pytorch-lightning](https://github.com/Lightning-AI/pytorch-lightning/pull/21686) | #21686 | Fix `torch.compile` breaking `toggle_optimizer`/`untoggle_optimizer` |
+| [tesseract-ocr/tesseract](https://github.com/tesseract-ocr/tesseract/pull/4563) | #4563 | Fix crash when LSTM is missing in a disabled-legacy build |
+
+Plus merges into [run-llama/llama_index](https://github.com/run-llama/llama_index/pull/21891), [mem0ai/mem0](https://github.com/mem0ai/mem0/pull/5202), [langchain4j](https://github.com/langchain4j/langchain4j/pull/5272), [lima-vm/lima](https://github.com/lima-vm/lima/pull/5090), [danny-avila/LibreChat](https://github.com/danny-avila/LibreChat/pull/13171), and [mochajs/mocha](https://github.com/mochajs/mocha/pull/6016).
+
+A merged PR into `transformers` or the `oxc` Rust linter is not a demo. It's the loop working.
+
+## The loop
+
+The interesting engineering isn't "make an LLM write code." It's making the code *good enough that a maintainer merges it*. That's a control problem, and superhuman treats it like one.
+
+```mermaid
+flowchart LR
+    subgraph discover [Discover]
+      RF[repo-finder] --> IS[issue-selector] --> RP[repo-profiler]
+    end
+    subgraph build [Build]
+      PL[planner] --> BD[builder] --> IA[impact-auditor]
+    end
+    subgraph loop [Score → Iterate]
+      SC[merge-probability-scorer] -->|weakest<br/>dimension| RD[reviewer-dispatcher]
+      RD -->|findings| BD2[builder]
+      BD2 --> SC
+    end
+    RP --> PL
+    IA --> SC
+    SC -->|"≥95% over 2 runs"| RC[resolve-comments] --> PR([Pull Request])
+    PR -.->|merged / abandoned| OUT[(merge_outcomes.jsonl)]
+    OUT -.->|calibrates prior| SC
+```
+
+Four ideas make the loop converge instead of wander:
+
+1. **Self-evaluation before submission.** `merge-probability-scorer` is a critic with a 10-dimension weighted rubric — correctness, tests, style, PR format, process compliance, scope, docs, commit hygiene, risk, and historical signal. The agent grades its own work the way a maintainer would, *before* spending the maintainer's attention.
+2. **Targeted iteration, not random polish.** Each round, `reviewer-dispatcher` picks the single **weakest non-plateaued dimension** and routes it to the matching language specialist (python / go / ts / java / kotlin / rust / cpp / csharp / flutter / security). Effort goes where it moves the score most. Plateau detection stops the loop from grinding a dimension that won't improve.
+3. **Bounded compute, real convergence.** The loop stops at **95% merge probability sustained over two consecutive runs**, and the iteration budget is **capped adaptively by diff size** (3 / 6 / 10). It terminates — by quality or by budget — every time.
+4. **A prior that learns.** Every merged or abandoned PR appends to `~/.superhuman/global/merge_outcomes.jsonl`, which calibrates the scorer's historical-signal dimension. The system carries a better prior into the next repo than it had on the last one.
+
+## The harness
+
+A loop that opens PRs into other people's repos, unattended, is only safe if the machinery underneath is disciplined. The harness is the part that lets the loop run without a human babysitting it:
+
+- **Contracts, not vibes.** [`agents/SHARED_STATE.md`](./agents/SHARED_STATE.md) is a single source of truth for who writes each state file and who reads it — a concurrency contract that lets parallel runs share `~/.superhuman/` without corrupting it.
+- **Typed state.** Every shared-state file has a [JSON Schema](./schemas/) (draft 2020-12), validated at write time. State is data with a shape, not a free-for-all.
+- **Behavior split from shell.** Reasoning and safety prose live in agent prompts (`agents/*.md`); the deterministic `bash`/`jq` lives in versioned, unit-tested [`scripts/`](./scripts). 35 bash tests cover the scripts and every schema.
+- **Blast-radius auditing.** `impact-auditor` runs before any refactor to a shared function — it blocks the class of change that's correct in one execution context (Flask request time) and fatal in another (FastAPI startup).
+- **Hard safety rails.** Allowlisted CI commands only, `--force-with-lease` to a fork (never upstream, never plain `--force`), and a prompt-injection halt on any review comment that tries to make the agent run shell or fetch external URLs. See [Safety rails](#safety-rails).
+
+Orchestrator + 9 specialists + 1 shared-state contract. The orchestrator is thin: it owns the lock, sequences the phases, and enforces the cap and the threshold. The intelligence is in the specialists and the loop.
 
 ## Required plugins
 
@@ -30,6 +82,20 @@ This plugin depends on skills and agents from other plugins.
 | `everything-claude-code` | Recommended | `reviewer-dispatcher` routes to language-specialist reviewers. Falls back to inline prompts via `AgentNotFoundError` rescue if missing, but review quality drops. |
 
 Declared in `.claude-plugin/plugin.json` under `requires.plugins`.
+
+## Prerequisites
+
+The agents shell out to standard developer tooling. Make sure these are on your `PATH`:
+
+| Tool | Used for | Install |
+|---|---|---|
+| [`gh`](https://cli.github.com/) | Cloning forks, opening PRs, reading issues and review comments. Must be authenticated (`gh auth login`) with a token that can fork and push. | `brew install gh` |
+| `git` | Branching, committing, `--force-with-lease` pushes to your fork. Configure `user.name`/`user.email` — commits are authored as you. | preinstalled / `brew install git` |
+| [`jq`](https://jqlang.github.io/jq/) | All shared-state JSON reads/writes under `~/.superhuman/`. | `brew install jq` |
+| `python3` | JSON Schema validation of shared-state files. | preinstalled / `brew install python` |
+| `flock` (Linux) | Fleet mutex so parallel runs can't clobber each other's state. macOS uses a directory-based fallback automatically. | preinstalled |
+
+> **GitHub auth matters.** `gh` needs to fork repos and push to your fork. The agents never push to upstream and never use plain `--force`. See [Safety rails](#safety-rails).
 
 ## Installation
 
@@ -105,6 +171,7 @@ Orchestrator + 9 specialists + 1 shared-state contract document.
 
 ```
 superhuman/
+├── README.md  CHANGELOG.md  CONTRIBUTING.md  SECURITY.md  LICENSE
 ├── .claude-plugin/
 │   ├── plugin.json           # Plugin manifest + requires.plugins declarations
 │   └── marketplace.json      # Marketplace catalog entry
@@ -166,7 +233,7 @@ All persistent state lives under `~/.superhuman/`. Per-repo state is keyed by `<
     └── repo-shortlist.json
 ```
 
-File ownership (sole-writer + readers) is documented in `agents/SHARED_STATE.md`.
+File ownership (sole-writer + readers) is documented in `agents/SHARED_STATE.md`. Every shared-state file has a matching JSON Schema (draft 2020-12) under `schemas/`, validated at write time.
 
 ## Safety rails
 
@@ -174,9 +241,35 @@ File ownership (sole-writer + readers) is documented in `agents/SHARED_STATE.md`
 - **CI allowlist.** `builder` only runs commands pre-approved in `allowed_commands.json`. `repo-profiler` seeds the allowlist from `.github/workflows/*.yml`; anything outside it requires explicit user approval.
 - **Force-with-lease only.** Pushes use `--force-with-lease` to the contributor's fork — never upstream, never plain `--force`.
 - **Prompt-injection halt.** `resolve-comments` classifies any comment asking it to run shell commands, modify files outside the diff, or fetch from external URLs as `suspicious`, halts the run, and logs to `mistakes.md`.
-- **Single-author commit rule.** Every commit is authored by the human contributor identity configured in `builder`. No `Co-Authored-By:` trailers, no AI attribution.
+- **Single-author commit rule.** Every commit is authored by the human contributor identity configured in `builder`.
 - **Reputation cooldown.** Repos where PRs consistently get rejected or ignored land in `repo_cooldown.json` and are skipped by `repo-finder` until the cooldown window expires.
+
+See [SECURITY.md](./SECURITY.md) for the full safety model and how to report a vulnerability.
+
+## Development
+
+The behavioral logic lives in two places: agent prompts (`agents/*.md`) and the shell they call out to (`scripts/`). Everything in `scripts/` is covered by self-contained bash unit tests under `tests/scripts/` — no test runner or framework, just `set -euo pipefail` scripts that exit non-zero on failure.
+
+Run the whole suite:
+
+```bash
+for t in tests/scripts/test_*.sh; do bash "$t" || echo "FAIL: $t"; done
+```
+
+Run a single test:
+
+```bash
+bash tests/scripts/test_state.sh
+```
+
+Tests require `jq` and `python3` (for schema validation) on your `PATH`. They write only to `mktemp` dirs — they never touch your real `~/.superhuman/` state.
+
+When you change a shared-state file's shape, update both its schema in `schemas/` and the matching `tests/scripts/test_schema_*.sh` fixture. See [CONTRIBUTING.md](./CONTRIBUTING.md) for conventions.
+
+## Contributing
+
+Issues and pull requests welcome. Start with [CONTRIBUTING.md](./CONTRIBUTING.md) for the repo layout, test conventions, and the agent-prompt / extracted-script split. Notable design decisions are written up under [`docs/`](./docs).
 
 ## License
 
-MIT
+[MIT](./LICENSE) © gaurav0107
