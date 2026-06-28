@@ -1,7 +1,7 @@
 {
   "name": "superhuman",
-  "description": "Personal skills and agents library for Claude Code",
-  "version": "0.5.1",
+  "description": "Autonomous open-source contribution workflow for Claude Code and Codex",
+  "version": "0.7.0",
   "author": {
     "name": "gaurav0107"
   },
@@ -11,7 +11,8 @@
   "keywords": [
     "skills",
     "agents",
-    "claude-code"
+    "claude-code",
+    "codex"
   ],
   "requires": {
     "plugins": {

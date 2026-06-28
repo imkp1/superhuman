@@ -1,10 +1,10 @@
 # superhuman
 
-> A multi-agent **harness** that contributes merge-quality pull requests to real open-source projects — and a **closed feedback loop** that scores its own work and iterates until a maintainer would merge it.
+> A multi-agent **harness** that contributes merge-quality pull requests to real open-source projects — and a **closed feedback loop** that scores its own work and iterates until a maintainer would merge it. Runs on [Claude Code](https://claude.com/claude-code) and Codex.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-0.5.1-green.svg)](./CHANGELOG.md)
-[![Platform](https://img.shields.io/badge/platform-Claude%20Code-8A2BE2.svg)](https://claude.com/claude-code)
+[![Version](https://img.shields.io/badge/version-0.7.0-green.svg)](./CHANGELOG.md)
+[![Platform](https://img.shields.io/badge/platform-Claude%20Code%20%7C%20Codex-8A2BE2.svg)](https://claude.com/claude-code)
 
 Most agent tools are **open-loop**: generate once, hope it's good. superhuman is **closed-loop**. It scores its own pull request before opening it, finds the single weakest dimension, spends an iteration fixing exactly that, re-scores, and repeats until it converges. It's gradient descent on one objective — *will a maintainer merge this?* — with a prior learned from every past outcome.
 
@@ -73,6 +73,15 @@ A loop that opens PRs into other people's repos, unattended, is only safe if the
 
 Orchestrator + 9 specialists + 1 shared-state contract. The orchestrator is thin: it owns the lock, sequences the phases, and enforces the cap and the threshold. The intelligence is in the specialists and the loop.
 
+## Supported runtimes
+
+| Runtime | Entry point | Notes |
+|---|---|---|
+| Claude Code | `.claude-plugin/` | Loads `agents/` as subagents and `commands/` as slash commands. |
+| Codex | `.codex-plugin/` | Loads `skills/superhuman/SKILL.md`, which adapts the same `agents/`, `scripts/`, and `schemas/` contracts for inline execution. |
+
+Claude Code can dispatch `Agent(subagent_type=...)` calls. Codex executes the same agent contracts inline by reading the referenced files under `agents/`.
+
 ## Required plugins
 
 This plugin depends on skills and agents from other plugins.
@@ -82,7 +91,7 @@ This plugin depends on skills and agents from other plugins.
 | [`superpowers`](https://github.com/obra/superpowers) | **Required** | `planner` invokes `superpowers:writing-plans`; `builder` invokes `superpowers:subagent-driven-development`. Without it, both agents fail with `PluginMissingError`. |
 | `everything-claude-code` | Recommended | `reviewer-dispatcher` routes to language-specialist reviewers. Falls back to inline prompts via `AgentNotFoundError` rescue if missing, but review quality drops. |
 
-Declared in `.claude-plugin/plugin.json` under `requires.plugins`.
+Declared for Claude Code in `.claude-plugin/plugin.json` under `requires.plugins`. Codex uses `skills/superhuman/SKILL.md` as the adapter and falls back to inline planning/execution when Claude-specific plugin skills are unavailable.
 
 ## Prerequisites
 
@@ -98,7 +107,7 @@ The agents shell out to standard developer tooling. Make sure these are on your 
 
 > **GitHub auth matters.** `gh` needs to fork repos and push to your fork. The agents never push to upstream and never use plain `--force`. See [Safety rails](#safety-rails).
 
-## Installation
+## Claude Code installation
 
 ```
 /plugin marketplace add https://github.com/obra/superpowers
@@ -109,6 +118,37 @@ The agents shell out to standard developer tooling. Make sure these are on your 
 
 /reload-plugins
 ```
+
+## Codex installation
+
+Codex support is declared in `.codex-plugin/plugin.json` and exposed through the `superhuman` skill in `skills/superhuman/SKILL.md`.
+
+There is no Codex marketplace command yet. Install manually by symlinking the skill into `~/.codex/skills/`:
+
+```
+git clone https://github.com/gaurav0107/superhuman ~/src/superhuman
+ln -s ~/src/superhuman/skills/superhuman ~/.codex/skills/superhuman
+```
+
+Then ask Codex to use the skill:
+
+```
+Use the superhuman skill to find a good open-source repo and contribute.
+```
+
+### Codex command equivalents
+
+Codex does not have slash commands. Use these prompts to invoke the same workflows the Claude Code commands trigger:
+
+| Claude Code command | Codex prompt |
+|---|---|
+| `/contribute` | `Use the superhuman skill to find a good open-source repo and contribute.` |
+| `/contribute owner/repo` | `Use the superhuman skill to contribute to owner/repo.` |
+| `/contribute owner/repo 123` | `Use the superhuman skill to contribute to owner/repo issue #123.` |
+| `/contribute-loop [N]` | `Use the superhuman skill to run N sequential contributions, stopping on suspicious_halt or crash.` |
+| `/contribution-fleet [N]` | Not supported in Codex — fleet runs require parallel subagent dispatch. Run sequential loops instead. |
+| `/contribution-dashboard [owner/repo]` | `Use the superhuman skill to show the contribution dashboard for owner/repo (or all repos if omitted).` |
+| `/repo-finder [N]` | `Use the superhuman skill to refresh my open-source repo shortlist with up to N candidates.` |
 
 ## Usage
 
@@ -176,6 +216,8 @@ superhuman/
 ├── .claude-plugin/
 │   ├── plugin.json           # Plugin manifest + requires.plugins declarations
 │   └── marketplace.json      # Marketplace catalog entry
+├── .codex-plugin/
+│   └── plugin.json           # Codex plugin manifest
 ├── agents/                   # Subagents (loaded as subagent_type by Claude Code)
 │   ├── SHARED_STATE.md       # File ownership + concurrency contract
 │   ├── opensource-contributor.md
@@ -203,7 +245,7 @@ superhuman/
 ├── schemas/                  # JSON Schema (draft 2020-12) for every shared-state file (v0.5.0+)
 │   └── *.schema.json
 ├── tests/                    # Bash unit tests for scripts/ — run via `bash tests/scripts/test_*.sh`
-└── skills/                   # (empty — this plugin exposes agents, not skills)
+└── skills/                   # Codex skill adapter for the shared workflow
 ```
 
 ## State layout
