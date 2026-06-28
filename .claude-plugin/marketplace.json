@@ -1,13 +1,13 @@
 {
   "name": "superhuman",
-  "description": "Personal skills and agents library for Claude Code",
+  "description": "Autonomous open-source contribution workflow for Claude Code and Codex",
   "owner": {
     "name": "gaurav0107"
   },
   "plugins": [
     {
       "name": "superhuman",
-      "description": "Personal skills and agents library for Claude Code",
+      "description": "Autonomous open-source contribution workflow for Claude Code and Codex",
       "version": "0.5.1",
       "source": "./",
       "author": {

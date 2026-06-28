@@ -1,0 +1,38 @@
+{
+  "name": "superhuman",
+  "version": "0.5.1",
+  "description": "Autonomous open-source contribution workflow for Claude Code and Codex.",
+  "author": {
+    "name": "gaurav0107",
+    "url": "https://github.com/gaurav0107"
+  },
+  "homepage": "https://github.com/gaurav0107/superhuman",
+  "repository": "https://github.com/gaurav0107/superhuman",
+  "license": "MIT",
+  "keywords": [
+    "open-source",
+    "contribution",
+    "agents",
+    "codex",
+    "claude-code"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Superhuman",
+    "shortDescription": "Run an autonomous open-source contribution workflow.",
+    "longDescription": "Coordinates repository discovery, issue selection, profiling, planning, building, scoring, iteration, and review-comment resolution for open-source contributions.",
+    "developerName": "gaurav0107",
+    "category": "Productivity",
+    "capabilities": [
+      "Write",
+      "Review",
+      "Automation"
+    ],
+    "websiteURL": "https://github.com/gaurav0107/superhuman",
+    "defaultPrompt": [
+      "Find a good open-source repo and contribute",
+      "Contribute to owner/repo issue #123",
+      "Refresh my open-source repo shortlist"
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 # superhuman
 
-> A multi-agent **harness** that contributes merge-quality pull requests to real open-source projects — and a **closed feedback loop** that scores its own work and iterates until a maintainer would merge it.
+> A multi-agent **harness** that contributes merge-quality pull requests to real open-source projects — and a **closed feedback loop** that scores its own work and iterates until a maintainer would merge it. Runs on [Claude Code](https://claude.com/claude-code) and Codex.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-0.5.1-green.svg)](./CHANGELOG.md)
@@ -73,6 +73,15 @@ A loop that opens PRs into other people's repos, unattended, is only safe if the
 
 Orchestrator + 9 specialists + 1 shared-state contract. The orchestrator is thin: it owns the lock, sequences the phases, and enforces the cap and the threshold. The intelligence is in the specialists and the loop.
 
+## Supported runtimes
+
+| Runtime | Entry point | Notes |
+|---|---|---|
+| Claude Code | `.claude-plugin/` | Loads `agents/` as subagents and `commands/` as slash commands. |
+| Codex | `.codex-plugin/` | Loads `skills/superhuman/SKILL.md`, which adapts the same `agents/`, `scripts/`, and `schemas/` contracts for inline execution. |
+
+Claude Code can dispatch `Agent(subagent_type=...)` calls. Codex executes the same agent contracts inline by reading the referenced files under `agents/`.
+
 ## Required plugins
 
 This plugin depends on skills and agents from other plugins.
@@ -82,7 +91,7 @@ This plugin depends on skills and agents from other plugins.
 | [`superpowers`](https://github.com/obra/superpowers) | **Required** | `planner` invokes `superpowers:writing-plans`; `builder` invokes `superpowers:subagent-driven-development`. Without it, both agents fail with `PluginMissingError`. |
 | `everything-claude-code` | Recommended | `reviewer-dispatcher` routes to language-specialist reviewers. Falls back to inline prompts via `AgentNotFoundError` rescue if missing, but review quality drops. |
 
-Declared in `.claude-plugin/plugin.json` under `requires.plugins`.
+Declared for Claude Code in `.claude-plugin/plugin.json` under `requires.plugins`. Codex uses `skills/superhuman/SKILL.md` as the adapter and falls back to inline planning/execution when Claude-specific plugin skills are unavailable.
 
 ## Prerequisites
 
@@ -98,7 +107,7 @@ The agents shell out to standard developer tooling. Make sure these are on your 
 
 > **GitHub auth matters.** `gh` needs to fork repos and push to your fork. The agents never push to upstream and never use plain `--force`. See [Safety rails](#safety-rails).
 
-## Installation
+## Claude Code installation
 
 ```
 /plugin marketplace add https://github.com/obra/superpowers
@@ -108,6 +117,16 @@ The agents shell out to standard developer tooling. Make sure these are on your 
 /plugin install superhuman@superhuman
 
 /reload-plugins
+```
+
+## Codex configuration
+
+Codex support is declared in `.codex-plugin/plugin.json` and exposed through the `superhuman` skill in `skills/superhuman/SKILL.md`.
+
+For local development, install or link this repository as a Codex plugin using your normal Codex plugin workflow, then ask Codex to use the `superhuman` skill:
+
+```
+Use the superhuman skill to find a good open-source repo and contribute.
 ```
 
 ## Usage
@@ -176,6 +195,8 @@ superhuman/
 ├── .claude-plugin/
 │   ├── plugin.json           # Plugin manifest + requires.plugins declarations
 │   └── marketplace.json      # Marketplace catalog entry
+├── .codex-plugin/
+│   └── plugin.json           # Codex plugin manifest
 ├── agents/                   # Subagents (loaded as subagent_type by Claude Code)
 │   ├── SHARED_STATE.md       # File ownership + concurrency contract
 │   ├── opensource-contributor.md
@@ -203,7 +224,7 @@ superhuman/
 ├── schemas/                  # JSON Schema (draft 2020-12) for every shared-state file (v0.5.0+)
 │   └── *.schema.json
 ├── tests/                    # Bash unit tests for scripts/ — run via `bash tests/scripts/test_*.sh`
-└── skills/                   # (empty — this plugin exposes agents, not skills)
+└── skills/                   # Codex skill adapter for the shared workflow
 ```
 
 ## State layout
