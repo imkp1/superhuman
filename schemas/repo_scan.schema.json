@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gaurav0107/superhuman/schemas/repo_scan.schema.json",
+  "title": "repo_scan",
+  "description": "Raw structural facts about a target repo, produced by repo-profiler at profile time. Grounds the lesson-distiller's dossier authoring so it summarizes real structure instead of exploring blind. Owner (sole writer): repo-profiler.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["repo", "generated_at", "head_sha"],
+  "properties": {
+    "repo":               {"type": "string", "description": "owner/repo slug"},
+    "generated_at":       {"type": "string", "format": "date-time"},
+    "head_sha":           {"type": "string", "description": "repo HEAD at scan time; copied into dossier_meta.json for freshness"},
+    "default_branch":     {"type": "string"},
+    "languages":          {"type": "array", "items": {"type": "string"}},
+    "source_dirs":        {"type": "array", "items": {"type": "string"}},
+    "test_dirs":          {"type": "array", "items": {"type": "string"}},
+    "test_name_patterns": {"type": "array", "items": {"type": "string"}},
+    "naming":             {"type": "object", "additionalProperties": true, "description": "observed identifier styles, e.g. {\"functions\":\"snake\"}"},
+    "top_symbols":        {"type": "array", "items": {"type": "object", "additionalProperties": true}, "description": "reuse-catalog seed: [{name,file}]"}
+  }
+}
