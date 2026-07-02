@@ -45,6 +45,9 @@ run_check identifier_case '{"style":"snake"}'  '{"new_identifiers":[]}'         
 d1=$(card_key '{"kind":"deterministic","check":{"id":"file_present","args":{"glob":"newsfragments/*"}},"rule":"a"}')
 d2=$(card_key '{"kind":"deterministic","check":{"id":"file_present","args":{"glob":"newsfragments/*"}},"rule":"DIFFERENT text"}')
 [ "$d1" = "$d2" ] || { echo "FAIL deterministic key should ignore rule text"; exit 1; }
+o1=$(card_key '{"kind":"deterministic","check":{"id":"file_in_dir","args":{"class":"test","path_glob":"tests/*"}},"rule":"a"}')
+o2=$(card_key '{"kind":"deterministic","check":{"id":"file_in_dir","args":{"path_glob":"tests/*","class":"test"}},"rule":"b"}')
+[ "$o1" = "$o2" ] || { echo "FAIL deterministic key must be canonical across arg key-order: [$o1] vs [$o2]"; exit 1; }
 s1=$(card_key '{"kind":"semantic","rule":"Reuse   the existing util."}')
 s2=$(card_key '{"kind":"semantic","rule":"reuse the existing UTIL."}')
 [ "$s1" = "$s2" ] || { echo "FAIL semantic key should normalize case/space: [$s1] vs [$s2]"; exit 1; }

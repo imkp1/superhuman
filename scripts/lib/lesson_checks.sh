@@ -112,7 +112,7 @@ run_check() {
 card_key() {
   printf '%s' "$1" | jq -r '
     if .kind == "deterministic"
-    then "det:" + (.check.id // "") + ":" + ((.check.args // {}) | tojson)
+    then "det:" + (.check.id // "") + ":" + ((.check.args // {}) | to_entries | sort_by(.key) | from_entries | tojson)
     else "sem:" + (.rule | ascii_downcase | gsub("\\s+"; " ") | gsub("^\\s+|\\s+$"; ""))
     end'
 }
