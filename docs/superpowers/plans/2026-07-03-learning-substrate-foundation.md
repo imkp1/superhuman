@@ -16,6 +16,7 @@ Copied verbatim from the spec. Every task's requirements implicitly include this
 
 - **Bash 3.2 compatible.** No `declare -A`, no `mapfile`, no `${var,,}`, no `[[ =~ ]]`. Use `grep -E`, `case`, `tr`, arrays with `+=`.
 - **Script skeleton (every script):** `#!/usr/bin/env bash`; a header-comment usage line; `set -euo pipefail`; `: "${CLAUDE_PLUGIN_ROOT:?CLAUDE_PLUGIN_ROOT must be set}"`; `source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/state.sh"`; a `while [ $# -gt 0 ]; do case "$1" in … esac; done` arg loop; unknown arg → `exit 2`. **Exit codes:** `0` success, `1` recoverable/negative-result (caller branches), `2` usage/abort.
+- **Executable bit + invocation convention:** directly-invoked scripts under `scripts/` are committed executable (`chmod +x`, mode `755`) like the existing `scripts/scorer/*.sh` — agents call them directly in Plan 3. Sourced libs (`scripts/lib/*.sh`, e.g. `state.sh`) stay `644`. **Tests invoke scripts via `bash "$path"`** (house convention — see `tests/scripts/test_historical_blend.sh:15`, `test_record_outcome.sh:8`), so a test never depends on the executable bit.
 - **Schema skeleton (every schema):** `"$schema": "https://json-schema.org/draft/2020-12/schema"`; `"$id": "https://github.com/gaurav0107/superhuman/schemas/<name>.schema.json"`; `"additionalProperties": true`; a minimal `required` list; per-property `description`; a top-level `description` that names the **Owner** (sole writer). Timestamps are `{"type":"string","format":"date-time"}`.
 - **Test skeleton (every test):** `#!/usr/bin/env bash`; `set -euo pipefail`; `export CLAUDE_PLUGIN_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"`; write only under `mktemp -d`; assert with `[ … ] || { echo "FAIL …"; exit 1; }`; end with `echo "OK test_<name>.sh"`. Never touch real `~/.superhuman/`.
 - **No new dependencies.** `jq`, `python3`, `git`, `gh`, `bash` only.
@@ -608,7 +609,7 @@ cat >> "$global_store" <<'EOF'
 {"id":"go-only","scope":"global","match":{"lang":"go"},"kind":"semantic","rule":"go rule","source":"outcome","evidence":[],"confidence":0.99,"hits":9,"repos_seen":["x/y","z/w"],"status":"active","created":"2026-01-01T00:00:00Z","last_confirmed":"2026-06-01T00:00:00Z"}
 EOF
 
-out=$("$SEL" --repo apache/airflow --lang python --store "$repo_store" --store "$global_store")
+out=$(bash "$SEL" --repo apache/airflow --lang python --store "$repo_store" --store "$global_store")
 
 ids=$(printf '%s' "$out" | jq -r '[.[].id] | join(",")')
 # Expect exactly news + reuse-global, in that order (enforced deterministic first, then advisory).
@@ -619,21 +620,21 @@ printf '%s' "$out" | jq -e 'any(.[]; .id=="go-only" or .id=="other" or .id=="dea
 
 # --- path-glob filter ---
 echo "airflow-core/src/x.py" > "$tmpdir/changed.txt"
-out2=$("$SEL" --repo apache/airflow --lang python --changed-files "$tmpdir/changed.txt" --store "$repo_store" --store "$global_store")
+out2=$(bash "$SEL" --repo apache/airflow --lang python --changed-files "$tmpdir/changed.txt" --store "$repo_store" --store "$global_store")
 printf '%s' "$out2" | jq -e 'any(.[]; .id=="news")' >/dev/null || { echo "FAIL news should match airflow-core path"; exit 1; }
 echo "docs/readme.md" > "$tmpdir/changed2.txt"
-out3=$("$SEL" --repo apache/airflow --lang python --changed-files "$tmpdir/changed2.txt" --store "$repo_store" --store "$global_store")
+out3=$(bash "$SEL" --repo apache/airflow --lang python --changed-files "$tmpdir/changed2.txt" --store "$repo_store" --store "$global_store")
 printf '%s' "$out3" | jq -e 'any(.[]; .id=="news")' >/dev/null && { echo "FAIL news should NOT match docs/ path"; exit 1; }
 # reuse-global has no match.paths -> still present regardless of changed files
 printf '%s' "$out3" | jq -e 'any(.[]; .id=="reuse-global")' >/dev/null || { echo "FAIL pathless card should survive path filter"; exit 1; }
 
 # --- cap ---
-out4=$("$SEL" --repo apache/airflow --lang python --cap 1 --store "$repo_store" --store "$global_store")
+out4=$(bash "$SEL" --repo apache/airflow --lang python --cap 1 --store "$repo_store" --store "$global_store")
 [ "$(printf '%s' "$out4" | jq 'length')" -eq 1 ] || { echo "FAIL cap 1 not honored"; exit 1; }
 [ "$(printf '%s' "$out4" | jq -r '.[0].id')" = "news" ] || { echo "FAIL cap should keep top-ranked (news)"; exit 1; }
 
 # --- no stores -> [] ---
-out5=$("$SEL" --repo apache/airflow --store "$tmpdir/nonexistent.jsonl")
+out5=$(bash "$SEL" --repo apache/airflow --store "$tmpdir/nonexistent.jsonl")
 [ "$out5" = "[]" ] || { echo "FAIL missing store should yield []"; exit 1; }
 
 # --- dimension filter (regression guard: an unrequested dimension must be excluded) ---
@@ -642,7 +643,7 @@ cat > "$dstore" <<'EOF'
 {"id":"proc","scope":"repo","match":{"repo":"apache/airflow","dimensions":["process"]},"kind":"semantic","rule":"p","source":"comment","evidence":[],"confidence":0.9,"hits":1,"repos_seen":["apache/airflow"],"status":"active","created":"2026-01-01T00:00:00Z","last_confirmed":"2026-06-01T00:00:00Z"}
 {"id":"style","scope":"repo","match":{"repo":"apache/airflow","dimensions":["style"]},"kind":"semantic","rule":"s","source":"comment","evidence":[],"confidence":0.9,"hits":1,"repos_seen":["apache/airflow"],"status":"active","created":"2026-01-01T00:00:00Z","last_confirmed":"2026-06-01T00:00:00Z"}
 EOF
-outd=$("$SEL" --repo apache/airflow --dimensions process --store "$dstore")
+outd=$(bash "$SEL" --repo apache/airflow --dimensions process --store "$dstore")
 printf '%s' "$outd" | jq -e 'any(.[]; .id=="proc")'  >/dev/null || { echo "FAIL dimension filter should keep proc"; exit 1; }
 printf '%s' "$outd" | jq -e 'any(.[]; .id=="style")' >/dev/null && { echo "FAIL dimension filter should drop style"; exit 1; }
 
@@ -755,6 +756,7 @@ Expected: `OK test_select_lessons.sh`
 - [ ] **Step 5: Commit**
 
 ```bash
+chmod +x scripts/lessons/select_lessons.sh
 git add scripts/lessons/select_lessons.sh tests/scripts/test_select_lessons.sh
 git commit -m "feat(lessons): select_lessons.sh — match/rank/cap retrieval
 
@@ -803,7 +805,7 @@ cat > "$tmpdir/cards.json" <<'EOF'
 EOF
 
 set +e
-out=$("$CHK" --cards "$tmpdir/cards.json" --context "$tmpdir/ctx.json"); rc=$?
+out=$(bash "$CHK" --cards "$tmpdir/cards.json" --context "$tmpdir/ctx.json"); rc=$?
 set -e
 [ "$rc" -eq 1 ] || { echo "FAIL expected exit 1 on enforced violation, got $rc"; exit 1; }
 # 'news' is an enforced violation; 'cand' is a candidate violation (advisory); 'sem' is skipped.
@@ -816,14 +818,14 @@ printf '%s' "$out" | jq -e '.violations | any(.id=="cand")'  >/dev/null && { ech
 mkdir -p "$tmpdir/wt/newsfragments"
 echo x > "$tmpdir/wt/newsfragments/1.bugfix"
 set +e
-out2=$("$CHK" --cards "$tmpdir/cards.json" --context "$tmpdir/ctx.json"); rc2=$?
+out2=$(bash "$CHK" --cards "$tmpdir/cards.json" --context "$tmpdir/ctx.json"); rc2=$?
 set -e
 [ "$rc2" -eq 0 ] || { echo "FAIL expected exit 0 once newsfragment present, got $rc2"; exit 1; }
 printf '%s' "$out2" | jq -e '.violations | length == 0' >/dev/null || { echo "FAIL violations should be empty"; exit 1; }
 
 # Empty/absent cards -> pass (graceful degradation).
 set +e
-out3=$("$CHK" --cards "$tmpdir/none.json" --context "$tmpdir/ctx.json"); rc3=$?
+out3=$(bash "$CHK" --cards "$tmpdir/none.json" --context "$tmpdir/ctx.json"); rc3=$?
 set -e
 [ "$rc3" -eq 0 ] || { echo "FAIL missing cards file should exit 0"; exit 1; }
 [ "$(printf '%s' "$out3" | jq '.checked')" -eq 0 ] || { echo "FAIL checked should be 0"; exit 1; }
@@ -909,6 +911,7 @@ Run: `for t in tests/scripts/test_*.sh; do bash "$t" || echo "FAIL: $t"; done`
 Expected: every line `OK …`, no `FAIL:` lines (existing 35 tests + 6 new remain green).
 
 ```bash
+chmod +x scripts/lessons/check_lessons.sh
 git add scripts/lessons/check_lessons.sh tests/scripts/test_check_lessons.sh
 git commit -m "feat(lessons): check_lessons.sh — deterministic compliance gate
 
