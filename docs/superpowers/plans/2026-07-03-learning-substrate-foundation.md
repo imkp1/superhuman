@@ -963,6 +963,22 @@ Plan 1's interfaces are the seam. Once they're green and committed, these follow
 
 ---
 
+### Carry-forward from Plan 1's final review (apply when writing Plans 2/3)
+
+Plan 1 shipped green — all 5 tasks reviewed (spec ✅ + quality Approved each); whole-branch
+review verdict: ready to merge, no Critical/Important. Three fail-safe Minors were deliberately
+deferred out of the foundation rather than fixed here:
+
+- **Plan 2 — `merge_cards` test (recommended by final review):** `card_key` is verified canonical
+  for arg *key-order* and semantic normalization. Lock the other half of the equivalence relation:
+  two cards differing only in a `check.args` *value* (not key order) MUST produce **different** keys.
+- **Plan 3 — `check_lessons.sh` `--enforce-min` validation:** once this is a live gate, validate
+  `--enforce-min` is numeric right after arg-parse (`grep -qE '^[0-9]+(\.[0-9]+)?$'` else `exit 2`).
+  Today a non-numeric value fails *safe* (jq errors → rc=2 mid-loop) but without a clear message.
+- **Plan 3 — `select_lessons.sh` caller:** the builder/scorer caller should assert the
+  `--changed-files` path exists before invoking; a nonexistent path silently skips path filtering
+  (fail-open — acceptable for retrieval, but worth an explicit caller-side check).
+
 ## Next steps
 
 1. Execute Plan 1 (below handoff).
