@@ -664,6 +664,24 @@ Plan 2's four scripts are the deterministic curation mechanism. Plan 3 adds the 
 - `import_sorted` check added to the registry; `SHARED_STATE.md`, dashboard Learning panel, `README`/`CHANGELOG`; bump both manifests to 0.8.0.
 - **Plan-1 review carry-forwards** (already recorded in the Plan-1 doc): `check_lessons.sh` `--enforce-min` numeric guard; `select_lessons.sh` caller asserts `--changed-files` exists.
 
+### Plan-2 whole-branch review carry-forwards (for Plan 3's distiller)
+
+The final review confirmed the curation primitives compose coherently and deliberately leave three
+transitions to the Plan-3 `lesson-distiller` — make these explicit distiller-contract requirements so
+the read-side `enforced` predicate (`status==active ∧ confidence≥0.75 ∧ scope∈{repo,global}`) stays coherent:
+- **Emit candidate cards as `status:"active"`.** `merge_cards` birth-defaults an *absent* status to `active`,
+  but writes an explicit `retired`/`demoted` through as-is — a card minted non-active would be stranded un-enforced.
+- **Own the `demoted`→`active` re-confirmation.** The write-side primitives never move a card *out* of `demoted`
+  (merge revives only `retired`→`active`; decay only moves toward `retired`; promote preserves existing status).
+  So `demoted`'s only exit is retirement-by-age unless the distiller explicitly re-confirms it.
+- **Own contradiction-demotion itself** (spec's Plan-3 job): set `demoted` on an enforced rule the current
+  repo's merged PRs disprove.
+
+**Post-review hardening (applied, `d50109c`):** all three store-mutators (`merge_cards`, `promote_lessons`,
+`decay_lessons`) now **abort loudly + `trap … EXIT` clean up their temp file on malformed input** — consistent
+behavior, no silent corruption write-through (merge) and no `.tmp` leak into `~/.superhuman/` (decay). A shared
+temp-file-safety helper in `state.sh` is a reasonable Plan-3 refactor so future store-mutating scripts inherit it.
+
 ## Next steps
 
 1. Execute Plan 2 (subagent-driven).
