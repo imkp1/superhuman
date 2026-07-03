@@ -107,15 +107,25 @@ Eligibility check (keep inline; not a full agent):
 4. **Clone fork.** Clone from the fork into
    `/Users/mia/myspace/opensource-work/<repo>`. Set `upstream` remote to
    the source repo. `origin` is always the fork.
-5. **Pin single-author identity.** Hard-coded rule: every commit this
-   orchestrator chain produces is authored by
-   `gaurav0107 <gauravdubey0107@gmail.com>`. No co-authors, no AI
-   attribution. Configure the local git identity immediately after clone
-   and strip any inherited commit template:
+5. **Pin single-author identity.** Rule: every commit this orchestrator chain
+   produces is authored by **one** identity — the `gh`-authenticated GitHub
+   user running the plugin, derived from `gh` and never hard-coded — so
+   whoever installs the plugin contributes under their own name. No
+   co-authors, no AI attribution. Configure the local git identity
+   immediately after clone and strip any inherited commit template:
 
    ```bash
-   git -C "$WORKDIR" config user.name  "gaurav0107"
-   git -C "$WORKDIR" config user.email "gauravdubey0107@gmail.com"
+   gh auth status >/dev/null 2>&1 || { echo "GH_AUTH_MISSING: run 'gh auth login'"; exit 1; }
+   GH_USER=$(gh api user --jq '.login')
+   GH_NAME=$(gh api user --jq '.name // .login')
+   GH_ID=$(gh api user --jq '.id')
+   GH_EMAIL=$(gh api user --jq '.email // empty')
+   # GitHub hides the email by default; fall back to the privacy noreply
+   # address, which still attributes commits on GitHub.
+   [ -z "$GH_EMAIL" ] && GH_EMAIL="${GH_ID}+${GH_USER}@users.noreply.github.com"
+
+   git -C "$WORKDIR" config user.name  "$GH_NAME"
+   git -C "$WORKDIR" config user.email "$GH_EMAIL"
    git -C "$WORKDIR" config --unset-all commit.template 2>/dev/null || true
    ```
 
@@ -536,8 +546,9 @@ Inherit `state_dir`, `atomic_write_json`, `require_lock` from `SHARED_STATE.md`.
   `IMPACT_AUDIT_BLOCKED` require a human decision. Do not auto-retry.
 - **Fork-only push target.** `origin` is always the fork. `upstream` is
   the source repo. Builder never pushes to upstream.
-- **Single-author rule (hard-coded).** Every commit and PR body produced
-  by this chain is authored by `gaurav0107 <gauravdubey0107@gmail.com>`
+- **Single-author rule (gh-derived).** Every commit and PR body produced
+  by this chain is authored by the one `gh`-authenticated GitHub user
+  running the plugin (derived from `gh` in Phase 0 — never hard-coded)
   with no `Co-Authored-By:` trailers and no AI attribution (no
   "Generated with Claude", "🤖 Generated with [Claude Code]",
   "noreply@anthropic.com"). Phase 0 pins the local git identity after
