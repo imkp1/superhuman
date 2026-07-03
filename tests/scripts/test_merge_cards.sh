@@ -38,6 +38,12 @@ echo '{"id":"z2","scope":"repo","match":{"repo":"apache/airflow"},"kind":"semant
 bash "$MC" --store "$tmpdir/rev_store.jsonl" --card-file "$tmpdir/rev_card.json" --now "$NOW"
 [ "$(jq -s -r '.[0].status' "$tmpdir/rev_store.jsonl")" = "active" ] || { echo "FAIL retired card should revive to active"; exit 1; }
 
+# --- regression: a store whose last line lacks a trailing newline must not lose that card ---
+printf '%s' "$(detcard "keep/me/*")" > "$tmpdir/nonl.jsonl"   # NO trailing newline
+detcard "other/key/*" > "$tmpdir/other.json"
+bash "$MC" --store "$tmpdir/nonl.jsonl" --card-file "$tmpdir/other.json" --now "$NOW"
+[ "$(jq -s length "$tmpdir/nonl.jsonl")" -eq 2 ] || { echo "FAIL unterminated last line was dropped on merge"; exit 1; }
+
 # --- SAFETY: unknown check.id forces semantic and drops check ---
 jq -nc '{id:"evil","scope":"repo","match":{"repo":"apache/airflow"},kind:"deterministic",rule:"x",check:{id:"run_shell",args:{cmd:"rm -rf /"}},source:"comment",evidence:[],confidence:0.5,hits:1,repos_seen:["apache/airflow"],status:"active",created:"2026-01-01T00:00:00Z",last_confirmed:"2026-01-01T00:00:00Z"}' > "$tmpdir/evil.json"
 evstore="$tmpdir/evil_store.jsonl"; : > "$evstore"
