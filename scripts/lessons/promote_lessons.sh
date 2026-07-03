@@ -8,6 +8,13 @@
 # Reuses card_key (single source of truth) to annotate both repo cards and the
 # existing global store, then upserts by key. Rewrites the global store (the
 # reduce returns the complete merged set).
+#
+# NOTE (bash 3.2): the two `jq -s` results below are written to temp FILES and read
+# back via `--argjson … "$(cat FILE)"`. Capturing a multi-line jq result directly —
+# `X=$(jq -s '<multiline>' … 2>/dev/null || echo '[]')` — hits a bash 3.2 (macOS
+# default) command-substitution parser bug that yields a bogus number (a 1-element
+# array reads as the integer 20). The redirect-to-file form keeps the `||` off the
+# `$( … )` and is bash-3.2-safe. VERIFY THIS SCRIPT UNDER `bash`, NOT zsh.
 set -euo pipefail
 : "${CLAUDE_PLUGIN_ROOT:?CLAUDE_PLUGIN_ROOT must be set}"
 source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/state.sh"
@@ -29,6 +36,16 @@ done
 mkdir -p "$(dirname "$GLOBAL")"
 [ -f "$GLOBAL" ] || : > "$GLOBAL"
 
+# Name all intermediate temp files up front and trap their cleanup on ANY exit
+# (including a mid-run abort under `set -e`, e.g. malformed JSON in a store).
+# $tmpf is consumed by `mv` on the happy path; `rm -f` of a moved/absent file is a no-op.
+REPO_ANNOT="${GLOBAL}.repo_annot.$$"
+EX_ANNOT="${GLOBAL}.ex_annot.$$"
+GROUPS_FILE="${GLOBAL}.groups.$$"
+EXISTING_FILE="${GLOBAL}.existing.$$"
+tmpf="${GLOBAL}.tmp.$$"
+trap 'rm -f "$REPO_ANNOT" "$EX_ANNOT" "$GROUPS_FILE" "$EXISTING_FILE" "$tmpf"' EXIT
+
 # Annotate every card in the given store files with its card_key -> {k, c} lines.
 annotate() {
   local out="$1"; shift
@@ -44,24 +61,19 @@ annotate() {
   done
 }
 
-REPO_ANNOT="${GLOBAL}.repo_annot.$$"
-EX_ANNOT="${GLOBAL}.ex_annot.$$"
 annotate "$REPO_ANNOT" "${REPO_STORES[@]:-}"
 annotate "$EX_ANNOT" "$GLOBAL"
 
 # Group repo cards by key; count DISTINCT repos; keep a representative (highest-confidence) card.
-GROUPS_FILE="${GLOBAL}.groups.$$"
+# Results go to temp FILES (not shell vars) — see the bash-3.2 NOTE in the header.
 jq -s '
   map(select(.c.scope == "repo"))
   | group_by(.k)
   | map({ key:   .[0].k,
           repos: (map(.c.match.repo // "") | unique | map(select(. != ""))),
           rep:   (max_by(.c.confidence).c) })' "$REPO_ANNOT" > "$GROUPS_FILE" 2>/dev/null || echo '[]' > "$GROUPS_FILE"
-
-EXISTING_FILE="${GLOBAL}.existing.$$"
 jq -s '.' "$EX_ANNOT" > "$EXISTING_FILE" 2>/dev/null || echo '[]' > "$EXISTING_FILE"
 
-tmpf="${GLOBAL}.tmp.$$"
 jq -n \
   --argjson groups "$(cat "$GROUPS_FILE")" \
   --argjson existing "$(cat "$EXISTING_FILE")" \
@@ -86,4 +98,3 @@ jq -n \
           | .hits          = (.hits // 1) ) )
   | [ .[] ]' | jq -c '.[]' > "$tmpf"
 mv "$tmpf" "$GLOBAL"
-rm -f "$REPO_ANNOT" "$EX_ANNOT" "$GROUPS_FILE" "$EXISTING_FILE"
