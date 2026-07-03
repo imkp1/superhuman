@@ -14,7 +14,7 @@
 
 Copied verbatim from the spec/Plan 1. Every task's requirements implicitly include this section.
 
-- **Bash 3.2 compatible.** No `declare -A`, `mapfile`, `${var,,}`, `[[ =~ ]]`. Use `case`, `grep -E`, arrays with `+=`, process substitution, `python3` for date math.
+- **Bash 3.2 compatible.** No `declare -A`, `mapfile`, `${var,,}`, `[[ =~ ]]`. Use `case`, `grep -E`, arrays with `+=`, process substitution, `python3` for date math. **Verify every test under `bash` (the scripts and the harness run under bash 3.2), NOT the interactive `zsh`** — some defects (e.g. a multi-line `X=$(jq '<multiline>' … || echo '[]')` capture) only reproduce under bash 3.2. When a shell var must hold a JSON value for `--argjson`, keep it single-line/compact or route it through a temp file.
 - **Script skeleton (every script):** `#!/usr/bin/env bash`; a header-comment usage line; `set -euo pipefail`; `: "${CLAUDE_PLUGIN_ROOT:?CLAUDE_PLUGIN_ROOT must be set}"`; `source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/state.sh"`; a `while [ $# -gt 0 ]; do case "$1" in … esac; done` arg loop; unknown arg → `exit 2`. **Exit codes:** `0` success, `1` recoverable, `2` usage/abort.
 - **Directly-invoked → executable.** These four scripts are called by the `lesson-distiller` agent in Plan 3, so each is committed mode **755** (`chmod +x` before `git add`, matching `scripts/scorer/*.sh` and Plan 1's `scripts/lessons/*.sh`). **Tests invoke them via `bash "$SCRIPT"`** (house convention), not direct execution.
 - **Rewrite, never append.** Every store mutation writes a `${STORE}.tmp.$$` and `mv`s it over the store. The merge/promotion output is the complete new set — appending would double-count.
@@ -279,6 +279,13 @@ Create `scripts/lessons/promote_lessons.sh`:
 # Reuses card_key (single source of truth) to annotate both repo cards and the
 # existing global store, then upserts by key. Rewrites the global store (the
 # reduce returns the complete merged set).
+#
+# NOTE (bash 3.2): the two `jq -s` results below are written to temp FILES and read
+# back via `--argjson … "$(cat FILE)"`. Capturing a multi-line jq result directly —
+# `X=$(jq -s '<multiline>' … 2>/dev/null || echo '[]')` — hits a bash 3.2 (macOS
+# default) command-substitution parser bug that yields a bogus number (a 1-element
+# array reads as the integer 20). The redirect-to-file form keeps the `||` off the
+# `$( … )` and is bash-3.2-safe. VERIFY THIS SCRIPT UNDER `bash`, NOT zsh.
 set -euo pipefail
 : "${CLAUDE_PLUGIN_ROOT:?CLAUDE_PLUGIN_ROOT must be set}"
 source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/state.sh"
@@ -321,16 +328,19 @@ annotate "$REPO_ANNOT" "${REPO_STORES[@]:-}"
 annotate "$EX_ANNOT" "$GLOBAL"
 
 # Group repo cards by key; count DISTINCT repos; keep a representative (highest-confidence) card.
-GROUPS=$(jq -s '
+# Results go to temp FILES (not shell vars) — see the bash-3.2 NOTE in the header.
+GROUPS_FILE="${GLOBAL}.groups.$$"
+jq -s '
   map(select(.c.scope == "repo"))
   | group_by(.k)
   | map({ key:   .[0].k,
           repos: (map(.c.match.repo // "") | unique | map(select(. != ""))),
-          rep:   (max_by(.c.confidence).c) })' "$REPO_ANNOT" 2>/dev/null || echo '[]')
-EXISTING=$(jq -s '.' "$EX_ANNOT" 2>/dev/null || echo '[]')
+          rep:   (max_by(.c.confidence).c) })' "$REPO_ANNOT" > "$GROUPS_FILE" 2>/dev/null || echo '[]' > "$GROUPS_FILE"
+EXISTING_FILE="${GLOBAL}.existing.$$"
+jq -s '.' "$EX_ANNOT" > "$EXISTING_FILE" 2>/dev/null || echo '[]' > "$EXISTING_FILE"
 
 tmpf="${GLOBAL}.tmp.$$"
-jq -nc --argjson groups "$GROUPS" --argjson existing "$EXISTING" \
+jq -nc --argjson groups "$(cat "$GROUPS_FILE")" --argjson existing "$(cat "$EXISTING_FILE")" \
        --arg now "$NOW" --argjson pmin "$PMIN" --argjson gmin "$GMIN" '
   ($existing | map({(.k): .c}) | add // {}) as $gx
   | reduce ($groups[] | select((.repos | length) >= $pmin)) as $g ($gx;
@@ -350,7 +360,7 @@ jq -nc --argjson groups "$GROUPS" --argjson existing "$EXISTING" \
           | .hits          = (.hits // 1) ) )
   | [ .[] ]' | jq -c '.[]' > "$tmpf"
 mv "$tmpf" "$GLOBAL"
-rm -f "$REPO_ANNOT" "$EX_ANNOT"
+rm -f "$REPO_ANNOT" "$EX_ANNOT" "$GROUPS_FILE" "$EXISTING_FILE"
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
