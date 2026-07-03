@@ -38,11 +38,13 @@ mkdir -p "$(dirname "$STORE")"
 [ -f "$STORE" ] || : > "$STORE"
 
 merged=""; tmpf="${STORE}.tmp.$$"; : > "$tmpf"
+trap 'rm -f "$tmpf"' EXIT
 # `|| [ -n "$line" ]` processes a final line with no trailing newline (a store an
 # external/manual editor may produce) — without it, read returns 1 at EOF on the
 # partial line and the loop drops that card.
 while IFS= read -r line || [ -n "$line" ]; do
   [ -n "$line" ] || continue
+  printf '%s' "$line" | jq -e . >/dev/null 2>&1 || { echo "merge_cards.sh: malformed line in store $STORE" >&2; exit 1; }
   if [ -z "$merged" ] && [ "$(card_key "$line")" = "$newkey" ]; then
     line=$(jq -nc --argjson old "$line" --argjson new "$card" --arg now "$NOW" --argjson step "$STEP" '
       $old

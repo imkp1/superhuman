@@ -51,4 +51,16 @@ bash "$MC" --store "$evstore" --card-file "$tmpdir/evil.json" --now "$NOW"
 [ "$(jq -s -r '.[0].kind' "$evstore")" = "semantic" ] || { echo "FAIL unknown check.id must force semantic"; exit 1; }
 [ "$(jq -s '.[0] | has("check")' "$evstore")" = "false" ] || { echo "FAIL forced-semantic card must drop check"; exit 1; }
 
+# --- malformed store line -> merge aborts (nonzero), store unchanged, no temp leak ---
+printf 'this is not json\n' > "$tmpdir/corrupt.jsonl"
+before=$(cat "$tmpdir/corrupt.jsonl")
+detcard "any/thing/*" > "$tmpdir/newc.json"
+set +e
+bash "$MC" --store "$tmpdir/corrupt.jsonl" --card-file "$tmpdir/newc.json" --now "$NOW" 2>/dev/null
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || { echo "FAIL merge should abort on malformed store line"; exit 1; }
+[ "$(cat "$tmpdir/corrupt.jsonl")" = "$before" ] || { echo "FAIL merge must not mutate store on abort"; exit 1; }
+[ -z "$(ls "$tmpdir"/corrupt.jsonl.tmp.* 2>/dev/null)" ] || { echo "FAIL merge leaked a temp file on abort"; exit 1; }
+
 echo "OK test_merge_cards.sh"

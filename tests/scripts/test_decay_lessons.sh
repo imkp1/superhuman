@@ -28,4 +28,15 @@ get() { jq -s -r --arg id "$1" --arg f "$2" '.[] | select(.id==$id) | .[$f] | to
 [ "$(get ancient status)" = "retired" ] || { echo "FAIL ancient card should retire (age>2*decay-days)"; exit 1; }
 [ "$(get nolc confidence)" = "0.9" ] && [ "$(get nolc status)" = "active" ] || { echo "FAIL card without last_confirmed must be untouched"; exit 1; }
 
+# --- malformed store line -> decay aborts (nonzero), store unchanged, no temp leak ---
+printf 'not json at all\n' > "$tmpdir/corrupt.jsonl"
+before=$(cat "$tmpdir/corrupt.jsonl")
+set +e
+bash "$DL" --store "$tmpdir/corrupt.jsonl" --now "$NOW" 2>/dev/null
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || { echo "FAIL decay should abort on malformed line"; exit 1; }
+[ "$(cat "$tmpdir/corrupt.jsonl")" = "$before" ] || { echo "FAIL decay must not mutate store on abort"; exit 1; }
+[ -z "$(ls "$tmpdir"/corrupt.jsonl.tmp.* 2>/dev/null)" ] || { echo "FAIL decay leaked a temp file on abort"; exit 1; }
+
 echo "OK test_decay_lessons.sh"

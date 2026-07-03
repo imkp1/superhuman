@@ -36,6 +36,7 @@ PY
 }
 
 tmpf="${STORE}.tmp.$$"; : > "$tmpf"
+trap 'rm -f "$tmpf"' EXIT
 while IFS= read -r card || [ -n "$card" ]; do
   [ -n "$card" ] || continue
   lc=$(printf '%s' "$card" | jq -r '.last_confirmed // ""')
