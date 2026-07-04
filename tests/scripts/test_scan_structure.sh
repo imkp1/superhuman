@@ -13,7 +13,7 @@ printf 'def parse_jwt(token):\n    return token\ndef _verify(sig):\n    return T
 echo 'def helper(): pass' > "$WT/src/util.py"
 echo 'export function doThing() {}' > "$WT/src/client.js"
 echo 'def test_parse(): pass' > "$WT/tests/test_jwt.py"
-echo 'ignored = 1' > "$WT/.git/hooks/x.py"
+echo 'def git_internal(): pass' > "$WT/.git/hooks/x.py"
 echo '# docs' > "$WT/docs/readme.md"
 
 out=$(bash "$SS" --repo apache/airflow --worktree "$WT" --head-sha deadbeef --now 2026-07-04T00:00:00Z)

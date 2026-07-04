@@ -45,7 +45,7 @@ TESTDIRS=$(find "$WT" -type d \( -name test -o -name tests -o -name spec -o -nam
 
 # top_symbols: {file,name} for defs/classes/exports across source files, first 12 (compact)
 TOPSYMS=$(grep -rHnE '^(def |class |export default function |export function |function )[A-Za-z_]' "$WT" --include='*.py' --include='*.js' --include='*.ts' --include='*.go' --include='*.rb' 2>/dev/null \
-  | sed "s#^$WT/##" | head -12 \
+  | grep -v '/\.git/' | sed "s#^$WT/##" | head -12 \
   | jq -Rc '[ inputs | capture("^(?<file>[^:]+):[0-9]+:(def |class |export default function |export function |function )(?<name>[A-Za-z_][A-Za-z0-9_]*)") ]' 2>/dev/null || echo '[]')
 [ -n "$TOPSYMS" ] || TOPSYMS='[]'
 
