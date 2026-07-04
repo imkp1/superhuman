@@ -4,6 +4,15 @@ All notable changes to **superhuman** are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/). The `version` field in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `.codex-plugin/plugin.json` must always match the latest released version here.
 
+## [0.8.0] — 2026-07-04
+
+### Added
+- `scripts/orchestrator/pr_body_with_attribution.sh` — assembles the PR body and appends a Superhuman origin-disclosure footer, honoring `SUPERHUMAN_ATTRIBUTION`. Unit-tested by `tests/scripts/test_pr_body_with_attribution.sh`. `agents/opensource-contributor.md` Phase 6 pipes the plan-derived body through it before `gh pr create`.
+
+### Changed
+- **PRs now disclose their Superhuman origin by default.** Every pull request the plugin opens appends a one-line footer to the **PR body** — `🤖 Opened with [Superhuman](https://github.com/gaurav0107/superhuman), an open-source contribution agent.` — linking the plugin. Most projects now welcome clearly-disclosed agent-assisted contributions, so transparency is the deliberate default as the plugin goes open-source. Set `SUPERHUMAN_ATTRIBUTION=off` (also `false`/`0`/`no`) to suppress it.
+- **The single-author rule is unchanged and now explicitly commit-scoped.** Commits still carry no `Co-Authored-By:` trailers and no AI attribution, and the pre-push verifier still enforces that (`agents/builder.md` Step 3). The new disclosure lives only in the PR body and never touches your commits.
+
 ## [0.7.1] — 2026-07-03
 
 ### Changed
