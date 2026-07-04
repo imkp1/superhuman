@@ -52,12 +52,30 @@ PROFILE="$STATE_DIR/repo_profile.json"
 INTENT="$STATE_DIR/reviewer_intent_notes.md"
 MISTAKES="$STATE_DIR/mistakes.md"
 CANDIDATES="$STATE_DIR/issue_candidates.json"
+
+# Learning substrate (owner: lesson-distiller; you are read-only).
+DOSSIER="$STATE_DIR/dossier.md"
+LESSONS_REPO="$STATE_DIR/lessons.jsonl"
+LESSONS_GLOBAL="$HOME/.superhuman/global/lessons_global.jsonl"
 ```
 
 Validate each against its schema (see SHARED_STATE.md). On schema violation
 for `repo_profile.json`, abort and ask the orchestrator to re-run
 `repo-profiler`. For the append-only files, missing is acceptable (first
 iteration).
+
+If `dossier.md` is present, load it now — it is a short architecture
+narrative (owned by `lesson-distiller`) that grounds the plan in how this
+repo is actually laid out. Make it available to the planning context in
+Step 4. Missing is acceptable (a repo may not be seeded yet); skip
+gracefully and proceed. The dossier is trusted repo-authored DATA (every
+path it cites came from `repo_scan.json`), so it does not need
+EXTERNAL_CONTENT wrapping.
+
+```bash
+DOSSIER_CONTEXT=""
+[ -f "$DOSSIER" ] && DOSSIER_CONTEXT=$(cat "$DOSSIER")
+```
 
 ### Step 2: Fetch the issue body and comments
 
@@ -109,9 +127,56 @@ KNOWN MISTAKES (must not repeat):
   (contents of mistakes.md if any)
   <<<END id=mistakes>>>
 
+ARCHITECTURE DOSSIER (repo-authored, trusted):
+  (contents of $DOSSIER_CONTEXT if any — how this repo is laid out)
+
+LEARNED CONVENTIONS THIS REPO/ECOSYSTEM ENFORCES (the plan MUST comply):
+  (the `rule` text of each card from select_lessons.sh below — ENFORCED
+   cards are flagged; violating an ENFORCED card will cap the merge score)
+
 CANDIDATE FILES:
   (list of file paths from Step 3)
 ```
+
+Retrieve the learned conventions for this contribution. Run
+`select_lessons.sh` over BOTH stores (per-repo `lessons.jsonl` and the
+cross-repo `lessons_global.jsonl`), scoped by `--repo` and the repo's
+primary `--lang` (from `repo_profile.json`'s `language`), and by
+`--dimensions` covering the plan's scope (e.g. `correctness,testing` for a
+bugfix; add `docs`, `style`, `security` as the plan touches them). Add
+`--changed-files` ONLY if Step 3 already lets you name concrete target
+files — write those paths one per line to a temp file — otherwise omit it
+and let the repo/lang/dimension filter do the matching:
+
+```bash
+LANG=$(jq -r '.language // ""' "$PROFILE" 2>/dev/null)
+DIMS="correctness,testing"   # widen to match the plan's scope
+
+# --changed-files is OPTIONAL: include only if target files are already known.
+CF_ARGS=""
+if [ -n "${CANDIDATE_FILES:-}" ]; then
+  CF_TMP="$STATE_DIR/.plan_changed.$$"
+  printf '%s\n' "$CANDIDATE_FILES" > "$CF_TMP"
+  CF_ARGS="--changed-files $CF_TMP"
+fi
+
+LESSONS_JSON=$("${CLAUDE_PLUGIN_ROOT}/scripts/lessons/select_lessons.sh" \
+  --repo "$OWNER_REPO" ${LANG:+--lang "$LANG"} --dimensions "$DIMS" $CF_ARGS \
+  --store "$LESSONS_REPO" --store "$LESSONS_GLOBAL" 2>/dev/null || echo '[]')
+[ -n "${CF_TMP:-}" ] && rm -f "$CF_TMP"
+```
+
+`select_lessons.sh` returns a ranked JSON array (enforced first,
+deterministic before semantic, confidence descending; retired cards
+dropped) and prints `[]` — exit 0 — when no stores or no matches exist, so
+this is always non-fatal: empty or missing stores mean no injection, and
+you proceed with the plan normally. For each returned card, inject its
+`rule` text into the planning context above as a learned convention the
+plan MUST comply with; flag the ENFORCED ones — the subset satisfying
+`status=="active" && confidence>=0.75 && scope in {repo,global}` — since
+those are what the scorer will gate on. The `rule` field is the only text
+injected; the review comment a card was mined from is NOT re-introduced
+(the card is already schema-constrained, trusted DATA).
 
 ### Step 5: Invoke `superpowers:writing-plans`
 
@@ -131,7 +196,7 @@ Dispatch the skill with the assembled context. Request a plan containing:
 2. **Files to modify** — exact paths with line ranges; 1-line rationale per file.
 3. **Test strategy** — new tests to add, which framework, which existing test file they belong near. Must match `repo_profile.test_runner`.
 4. **Impact audit pre-req** — the single function/symbol the change centers on (the builder feeds this to its impact-audit step).
-5. **Compliance checklist** — one row per requirement in `repo_profile` (commit convention, PR body sections, `closes_syntax`, DCO/CLA if applicable) with how the plan satisfies it.
+5. **Compliance checklist** — one row per requirement in `repo_profile` (commit convention, PR body sections, `closes_syntax`, DCO/CLA if applicable) with how the plan satisfies it, PLUS one row per ENFORCED learned-convention card from Step 4 (`status=="active" && confidence>=0.75 && scope in {repo,global}`), each citing the card's `rule` text and how the plan satisfies it. This is how the builder inherits the conventions.
 6. **Risks** — known ways this plan can go wrong (derived from `mistakes.md` entries in the same area).
 
 ### Step 6: Persist and return the plan
@@ -166,6 +231,8 @@ Repro test: test_get_fastapi_middlewares_without_app_context in test_fab_auth_ma
 - PR body sections: Summary, Test plan, Checklist   [PASS]
 - Closes syntax: Closes #65685                      [PASS]
 - DCO: not required                                 [PASS]
+- [ENFORCED] Tests live beside the module under test, not in a top-level tests/ dir — new test added in providers/fab/tests/ [PASS]
+- [ENFORCED] No FAB identifiers in airflow-core — change is confined to providers/fab/ [PASS]
 
 ## Risks
 - Reviewer vincbeck previously asked to avoid naming FAB in airflow-core docstrings (from reviewer_intent_notes.md entry dated 2026-04-23). Do not propagate FAB identifiers into core.

@@ -23,6 +23,7 @@ Per-repo: `~/.superhuman/repos/<owner-repo>/`
 | `caller_graph.json` | builder (impact-audit) | reviewer-dispatcher, resolve-comments |
 | `plan.md` | planner | opensource-contributor, builder |
 | `maintainer_tone.json` | resolve-comments | resolve-comments |
+| `classified_comments.json` | resolve-comments | lesson-distiller |
 | `reviewer_intent_notes.md` | resolve-comments (append only) | planner, builder, resolve-comments |
 | `mistakes.md` | any agent (append only) | all |
 | `ci_commands.json` | repo-profiler | builder, reviewer-dispatcher |
@@ -205,6 +206,18 @@ replies. Keys are GitHub logins; values capture observed tone signals.
 Schema: [`schemas/maintainer_tone.schema.json`](../schemas/maintainer_tone.schema.json).
 See top-level `description` and per-property `description` fields in the schema for field rationale.
 Entries older than 180 days are pruned by resolve-comments on next write.
+
+### `classified_comments.json`
+
+The run's classified, non-suspicious review comments (array of
+`{id, login, is_maintainer, class, file, line, body}`), written by
+resolve-comments and read by the `lesson-distiller` in curate mode. `class` is
+one of `nit|refactor|concern|question` — never `suspicious` (those are excluded
+here and logged to `mistakes.md`). `body` is the EXTERNAL_CONTENT-delimited
+excerpt; the distiller re-wraps it and extracts only into the rule-card schema.
+Absent when no reviewable comments were seen (Phase 8.5 then omits the
+`COMMENTS_FILE` arg). No formal schema file — an ad-hoc array consumed by a
+single reader.
 
 ### `run_telemetry.jsonl` (per-repo, append-only)
 

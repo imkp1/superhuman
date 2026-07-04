@@ -40,6 +40,15 @@ Each dimension is scored 0-10, then weighted to produce the final percentage.
 `ci_commands.json` failed on its most recent run, the final score is capped
 at 40%. Maintainers do not review red PRs.
 
+**Blocking cap (convention compliance):** If any ENFORCED learned rule card
+is violated — a deterministic check that failed (`check_lessons.sh
+.violations`), or a semantic card you judge clearly broken — the final score
+is capped at **75%** and each violated `rule` is listed as a Blocking Issue.
+merge-ready needs ≥80%, so an unfixed enforced-convention violation blocks
+merge-ready until the builder addresses it. Enforced = `status=="active" &&
+confidence>=0.75 && scope∈{repo,global}` (the shared enforced predicate). See
+**Step 3b** below for how the cards are selected and checked.
+
 How to check: for each entry in `ci_commands.local_runnable[]`, read
 `/tmp/<name>.log` and the last `builder:ci_gate` entry in
 `mistakes.md`. A command counts as failing if its log shows a non-zero
@@ -259,6 +268,103 @@ Calibration anchors:
 Do NOT let `historical_signal` exceed `rubric_anchor + 3` or fall below
 `rubric_anchor - 3`. The corpus can steer but not stampede.
 
+### Step 3b: Convention compliance (learned rules)
+
+The distiller mints **rule cards** from merged-PR review feedback (the PREVENT
+side runs in the planner/builder). Here you run the ENFORCE half: select the
+cards that match this contribution and check the deterministic ones against the
+diff. A violated ENFORCED rule caps the score and lists the rule under Blocking
+Issues; the builder must fix it before merge-ready.
+
+This whole step is **non-fatal**: a missing store, an empty selection (`[]`),
+or a check-script error means "no convention constraints" — proceed with
+`CONVENTION_CAP=100` and no convention Blocking Issues. This mirrors
+`check_lessons.sh`'s own fail-open design (its checks FAIL OPEN on any missing
+context field, so best-effort context is fine).
+
+Pass BOTH stores — the per-repo store and the promoted global store — every
+time. `--lang` comes from `repo_profile.language`. Temp files via `mktemp`,
+cleaned on EXIT (same temp+rename discipline this file already uses for
+`current_contribution.json`, since the scorer has no Write tool).
+
+```bash
+LESSONS_REPO="$STATE_DIR/lessons.jsonl"
+LESSONS_GLOBAL="$HOME/.superhuman/global/lessons_global.jsonl"
+LANG=$(jq -r '.language // ""' "$PROFILE" 2>/dev/null || echo "")
+
+CF_TMP=$(mktemp); SEL_TMP=$(mktemp); CTX_TMP=$(mktemp); CHK_TMP=$(mktemp)
+trap 'rm -f "$CF_TMP" "$SEL_TMP" "$CTX_TMP" "$CHK_TMP"' EXIT
+
+# 1) changed_files — one path per line, straight from the diff.
+git diff "${DEFAULT_BRANCH}...HEAD" --name-only > "$CF_TMP" 2>/dev/null || : > "$CF_TMP"
+
+# 2) SELECTED cards — both stores, repo + lang + changed-files. Fail open to [].
+if ! "${CLAUDE_PLUGIN_ROOT}/scripts/lessons/select_lessons.sh" \
+      --repo "$OWNER_REPO" ${LANG:+--lang "$LANG"} \
+      --changed-files "$CF_TMP" \
+      --store "$LESSONS_REPO" --store "$LESSONS_GLOBAL" \
+      > "$SEL_TMP" 2>/dev/null; then
+  echo '[]' > "$SEL_TMP"
+fi
+[ -s "$SEL_TMP" ] || echo '[]' > "$SEL_TMP"
+
+# 3) Context JSON (contract: worktree, changed_files, head_subject,
+#    new_identifiers). new_identifiers is a best-effort parse of added
+#    def/function/class/const names off the diff's '+' lines; empty is OK.
+NEW_IDS=$(git diff "${DEFAULT_BRANCH}...HEAD" 2>/dev/null \
+  | grep -E '^\+' | grep -vE '^\+\+\+' \
+  | sed -nE 's/^\+.*\b(def|function|class|const|func|type|struct|interface)[[:space:]]+([A-Za-z_][A-Za-z0-9_]*).*/\2/p' \
+  | sort -u | jq -R . | jq -sc . 2>/dev/null || echo '[]')
+[ -n "$NEW_IDS" ] || NEW_IDS='[]'
+HEAD_SUBJ=$(git log -1 --pretty=%s HEAD 2>/dev/null || echo "")
+CF_JSON=$(jq -R . "$CF_TMP" 2>/dev/null | jq -sc . 2>/dev/null || echo '[]')
+[ -n "$CF_JSON" ] || CF_JSON='[]'
+jq -nc --arg wt "$WORKDIR" --argjson cf "$CF_JSON" \
+       --arg hs "$HEAD_SUBJ" --argjson ni "$NEW_IDS" \
+  '{worktree:$wt, changed_files:$cf, head_subject:$hs, new_identifiers:$ni}' \
+  > "$CTX_TMP" 2>/dev/null || echo '{}' > "$CTX_TMP"
+
+# 4) check_lessons — deterministic cards only. Capture stdout AND exit code
+#    (exit 1 = >=1 enforced violation). Never let a script error crash scoring.
+CHK_RC=0
+"${CLAUDE_PLUGIN_ROOT}/scripts/lessons/check_lessons.sh" \
+  --cards "$SEL_TMP" --context "$CTX_TMP" --enforce-min 0.75 \
+  > "$CHK_TMP" 2>/dev/null || CHK_RC=$?
+[ -s "$CHK_TMP" ] || echo '{"violations":[],"advisories":[],"checked":0}' > "$CHK_TMP"
+
+VIOL=$(jq -c '.violations // []' "$CHK_TMP" 2>/dev/null || echo '[]')
+ADV=$(jq -c '.advisories // []' "$CHK_TMP" 2>/dev/null || echo '[]')
+N_VIOL=$(printf '%s' "$VIOL" | jq 'length' 2>/dev/null || echo 0)
+
+# 5) Deterministic enforced violations → convention cap + Blocking Issues.
+CONVENTION_CAP=100
+if [ "${N_VIOL:-0}" -gt 0 ]; then
+  CONVENTION_CAP=75            # add "convention" to caps_applied in Step 4
+fi
+```
+
+Then read the results into your write-up:
+
+- **`.violations` (deterministic, ENFORCED):** while any is unfixed, set
+  `CONVENTION_CAP=75` and list each entry's `rule` under **Blocking Issues**
+  (§Output Format). Add `"convention"` to `caps_applied` in Step 4 (see below).
+- **`.advisories`** (the same checks failing but NOT enforced): list each
+  `rule` under **Improvement Suggestions** — informative, never capping.
+- **Semantic enforced cards:** `check_lessons.sh` does not evaluate semantic
+  cards (only the deterministic registry checks). Pull the enforced semantic
+  cards out of the SELECTED set and feed their `rule` text into your
+  dimension-scoring LLM pass (Step 3) as **must-satisfy conventions**. A clear
+  violation contributes to Blocking Issues and caps the relevant dimension's
+  score — judge these the same way you judge correctness/style.
+
+```bash
+# Enforced SEMANTIC cards → must-satisfy conventions for the LLM pass.
+SEM_ENFORCED=$(jq -c '
+  map(select(.kind=="semantic" and .status=="active"
+    and .confidence>=0.75 and (.scope=="repo" or .scope=="global")))
+  | map({id, rule})' "$SEL_TMP" 2>/dev/null || echo '[]')
+```
+
 ### Step 4: Calculate Score
 
 The score arithmetic (weighted sum across 10 dimensions, then cap clamp)
@@ -274,13 +380,34 @@ Compute the score by invoking
   `process`, `scope`, `docs`, `commit`, `risk`), each set to an integer
   0-10. Use `historical` for the value computed in Step 3a above.
 - `<CAPS_JSON>` is a JSON array of cap names that fired (e.g. `[]`,
-  `["process"]`, `["ci_health"]`, `["ci_health_flake_skipped"]`).
+  `["process"]`, `["ci_health"]`, `["ci_health_flake_skipped"]`,
+  `["convention"]`).
 - `<PLATS_JSON>` is a JSON array of dimension names that plateaued.
 
 The script prints a JSON object with `{raw, final, dimensions, plateaued,
 caps_applied}` to stdout. `raw` is the unclamped weighted sum; `final` is
 clamped to 50 if `caps_applied` contains `process`, or 40 if it contains
 `ci_health` (lower cap wins).
+
+**Convention cap (applied here, after the script).** `compute_score.sh`
+only clamps for `process`/`ci_health`; the convention cap is enforced by
+you as one more `min`. When Step 3b set `CONVENTION_CAP=75` (an enforced
+deterministic violation is unfixed — or your LLM pass found a clear enforced
+semantic violation), take the min of the script's `final` and the cap, and
+add `"convention"` to `caps_applied`. Lower cap still wins overall, so this
+never *raises* a score already clamped to 50/40:
+
+```bash
+FINAL_SCORE=$(printf '%s' "$SCORE_JSON" | jq -r '.final')
+if [ "${CONVENTION_CAP:-100}" -lt "$FINAL_SCORE" ]; then
+  FINAL_SCORE="$CONVENTION_CAP"      # cap at 75; blocks merge-ready (needs >=80)
+fi
+```
+
+Include `"convention"` in the `<CAPS_JSON>` you pass the script so it lands
+in the persisted `caps_applied[]` (the script does not clamp on it, but
+carrying the name keeps the record honest for reviewer-dispatcher and the
+orchestrator).
 
 Rubric weights (preserved from prior inline arithmetic, encoded in the
 script): correctness 22, test_coverage 18, historical 10, style 9,
@@ -303,11 +430,17 @@ if ci_failing:
         # record which signatures matched in notes
     else:
         caps_applied.append("ci_health")    # final clamped to 40
+if convention_cap < 100:                    # Step 3b: enforced rule violated
+    caps_applied.append("convention")       # final min'd to 75 (post-script)
 ```
 
 `is_flake_log` is the helper defined earlier in this file (greps the log
 tail against patterns in `flake_signatures.md`). You evaluate it per
-case — the script never reads logs.
+case — the script never reads logs. `convention_cap` is the `CONVENTION_CAP`
+computed in Step 3b (75 when any enforced deterministic violation is unfixed
+or an enforced semantic card is clearly broken, else 100); unlike
+`process`/`ci_health` the script does not clamp on it — you apply the min
+above and carry `"convention"` for the record.
 
 ### Step 5: Generate Feedback
 
@@ -357,6 +490,15 @@ For every dimension scoring below 8, provide:
 - NEEDS WORK: 50-84%
 - UNLIKELY MERGE: < 50%
 ```
+
+**Enforced convention violations in the output (Step 3b).** Under
+`## Blocking Issues`, add one line per enforced violation — the deterministic
+ones from `check_lessons.sh .violations` and any enforced semantic card your
+LLM pass judged clearly broken — quoting the card's `rule` text and, where you
+can, the file/line that breaks it (e.g. `[learned rule] <rule> — <file:line> —
+<how to fix>`). These are what drive the `convention` cap. Put the
+`.advisories` (checks that failed but were NOT enforced) under
+`## Improvement Suggestions` — informative, never capping.
 
 ## Calibration Guide
 
@@ -422,6 +564,58 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/scorer/record_outcome.sh" \
 to `~/.superhuman/global/merge_outcomes.jsonl` (POSIX append-atomic for
 <4KB writes). This file is the calibration corpus for future scorer
 tuning — never rewrite it, never prune it.
+
+### Step 7b (MODE=record_outcome): Log shipped enforced-rule violations
+
+AFTER the `merge_outcomes.jsonl` line is appended, re-run the enforce gate
+against the **final** diff and log a `shipped_violation` for every card that
+is STILL an enforced deterministic violation. This is the terminal check that
+captures "we shipped/closed with a known enforced rule unfixed."
+
+Record ONLY here, at terminal, and ONLY the `shipped_violation` kind. Per
+scoring iteration would over-count (the same rule would fire on every run); the
+distiller owns `maintainer_reraise` — do not record that kind here (see
+`record_regression.sh` and SHARED_STATE.md). Same fail-open discipline as
+Step 3b: a missing store, `[]`, or a script error records nothing and does not
+fail the outcome recording.
+
+```bash
+LESSONS_REPO="$STATE_DIR/lessons.jsonl"
+LESSONS_GLOBAL="$HOME/.superhuman/global/lessons_global.jsonl"
+LANG=$(jq -r '.language // ""' "$PROFILE" 2>/dev/null || echo "")
+
+CF_TMP=$(mktemp); SEL_TMP=$(mktemp); CTX_TMP=$(mktemp); CHK_TMP=$(mktemp)
+trap 'rm -f "$CF_TMP" "$SEL_TMP" "$CTX_TMP" "$CHK_TMP"' EXIT
+
+git diff "${DEFAULT_BRANCH}...HEAD" --name-only > "$CF_TMP" 2>/dev/null || : > "$CF_TMP"
+
+"${CLAUDE_PLUGIN_ROOT}/scripts/lessons/select_lessons.sh" \
+  --repo "$OWNER_REPO" ${LANG:+--lang "$LANG"} \
+  --changed-files "$CF_TMP" \
+  --store "$LESSONS_REPO" --store "$LESSONS_GLOBAL" \
+  > "$SEL_TMP" 2>/dev/null || echo '[]' > "$SEL_TMP"
+[ -s "$SEL_TMP" ] || echo '[]' > "$SEL_TMP"
+
+HEAD_SUBJ=$(git log -1 --pretty=%s HEAD 2>/dev/null || echo "")
+CF_JSON=$(jq -R . "$CF_TMP" 2>/dev/null | jq -sc . 2>/dev/null || echo '[]')
+[ -n "$CF_JSON" ] || CF_JSON='[]'
+jq -nc --arg wt "$WORKDIR" --argjson cf "$CF_JSON" --arg hs "$HEAD_SUBJ" \
+  '{worktree:$wt, changed_files:$cf, head_subject:$hs, new_identifiers:[]}' \
+  > "$CTX_TMP" 2>/dev/null || echo '{}' > "$CTX_TMP"
+
+"${CLAUDE_PLUGIN_ROOT}/scripts/lessons/check_lessons.sh" \
+  --cards "$SEL_TMP" --context "$CTX_TMP" --enforce-min 0.75 \
+  > "$CHK_TMP" 2>/dev/null || true
+[ -s "$CHK_TMP" ] || echo '{"violations":[]}' > "$CHK_TMP"
+
+# One shipped_violation per still-enforced-violated deterministic card.
+while IFS= read -r rid || [ -n "$rid" ]; do
+  [ -n "$rid" ] || continue
+  "${CLAUDE_PLUGIN_ROOT}/scripts/lessons/record_regression.sh" \
+    --repo "$OWNER_REPO" --rule-id "$rid" \
+    --kind shipped_violation --pr-url "$PR_URL" 2>/dev/null || true
+done < <(jq -r '.violations[]?.id // empty' "$CHK_TMP" 2>/dev/null)
+```
 
 ## Step 7.5 (MODE=record_outcome): Regenerate the cooldown gate
 
