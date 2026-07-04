@@ -42,4 +42,31 @@ bash "$SS" --repo a/b --worktree "$tmpdir/nope" 2>/dev/null; rc=$?
 set -e
 [ "$rc" -eq 2 ] || { echo "FAIL missing worktree should exit 2, got $rc"; exit 1; }
 
+# --- adversarial repo shapes: scan must stay valid + correct (regressions for the bash-pipeline bugs) ---
+# C-only repo (no py/js source): must NOT crash, must emit a valid non-empty object
+cw="$tmpdir/crepo"; mkdir -p "$cw/src" "$cw/include"; echo 'int f(){return 0;}' > "$cw/src/f.c"; echo 'int g;' > "$cw/include/f.h"
+set +e; cout=$(bash "$SS" --repo c/only --worktree "$cw" --now 2026-07-04T00:00:00Z); crc=$?; set -e
+[ "$crc" -eq 0 ] || { echo "FAIL C-only repo scan should exit 0, got $crc"; exit 1; }
+printf '%s' "$cout" > "$tmpdir/cscan.json"
+validate_json "$SCHEMA" "$tmpdir/cscan.json" || { echo "FAIL C-only scan must validate"; exit 1; }
+printf '%s' "$cout" | jq -e '.languages | index("c")' >/dev/null || { echo "FAIL C-only languages should include c"; exit 1; }
+
+# single-symbol repo: the one symbol must be present (regression for the jq -R first-line drop)
+sw="$tmpdir/single"; mkdir -p "$sw/src"; echo 'def only_symbol(): pass' > "$sw/src/a.py"
+sout=$(bash "$SS" --repo s/one --worktree "$sw" --now 2026-07-04T00:00:00Z)
+[ "$(printf '%s' "$sout" | jq -rc '[.top_symbols[].name]')" = '["only_symbol"]' ] || { echo "FAIL single-symbol repo must keep its one symbol"; exit 1; }
+
+# vendored code must NOT enter the reuse catalog
+vw="$tmpdir/vend"; mkdir -p "$vw/src" "$vw/vendor/pkg"; echo 'def real(): pass' > "$vw/src/a.py"; echo 'def vendored_thing(): pass' > "$vw/vendor/pkg/l.py"
+vout=$(bash "$SS" --repo v/end --worktree "$vw" --now 2026-07-04T00:00:00Z)
+printf '%s' "$vout" | jq -e '[.top_symbols[].name] | index("vendored_thing")' >/dev/null && { echo "FAIL vendored code must be excluded from top_symbols"; exit 1; }
+printf '%s' "$vout" | jq -e '[.top_symbols[].name] | index("real")' >/dev/null || { echo "FAIL first-party symbol should be present"; exit 1; }
+
+# empty repo: valid object, exit 0
+ew="$tmpdir/empty"; mkdir -p "$ew"
+set +e; eout=$(bash "$SS" --repo e/mpty --worktree "$ew" --now 2026-07-04T00:00:00Z); erc=$?; set -e
+[ "$erc" -eq 0 ] || { echo "FAIL empty repo scan should exit 0, got $erc"; exit 1; }
+printf '%s' "$eout" > "$tmpdir/escan.json"
+validate_json "$SCHEMA" "$tmpdir/escan.json" || { echo "FAIL empty repo scan must validate"; exit 1; }
+
 echo "OK test_scan_structure.sh"
