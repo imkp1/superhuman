@@ -52,7 +52,7 @@ printf 'def parse_jwt(token):\n    return token\ndef _verify(sig):\n    return T
 echo 'def helper(): pass' > "$WT/src/util.py"
 echo 'export function doThing() {}' > "$WT/src/client.js"
 echo 'def test_parse(): pass' > "$WT/tests/test_jwt.py"
-echo 'ignored = 1' > "$WT/.git/hooks/x.py"
+echo 'def git_internal(): pass' > "$WT/.git/hooks/x.py"   # matching def INSIDE .git — exercises the exclusion (non-vacuous)
 echo '# docs' > "$WT/docs/readme.md"
 
 out=$(bash "$SS" --repo apache/airflow --worktree "$WT" --head-sha deadbeef --now 2026-07-04T00:00:00Z)
@@ -141,7 +141,7 @@ TESTDIRS=$(find "$WT" -type d \( -name test -o -name tests -o -name spec -o -nam
 
 # top_symbols: {file,name} for defs/classes/exports across source files, first 12 (compact)
 TOPSYMS=$(grep -rHnE '^(def |class |export default function |export function |function )[A-Za-z_]' "$WT" --include='*.py' --include='*.js' --include='*.ts' --include='*.go' --include='*.rb' 2>/dev/null \
-  | sed "s#^$WT/##" | head -12 \
+  | grep -v '/\.git/' | sed "s#^$WT/##" | head -12 \
   | jq -Rc '[ inputs | capture("^(?<file>[^:]+):[0-9]+:(def |class |export default function |export function |function )(?<name>[A-Za-z_][A-Za-z0-9_]*)") ]' 2>/dev/null || echo '[]')
 [ -n "$TOPSYMS" ] || TOPSYMS='[]'
 
