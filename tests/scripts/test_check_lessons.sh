@@ -46,4 +46,10 @@ set -e
 [ "$rc3" -eq 0 ] || { echo "FAIL missing cards file should exit 0"; exit 1; }
 [ "$(printf '%s' "$out3" | jq '.checked')" -eq 0 ] || { echo "FAIL checked should be 0"; exit 1; }
 
+# --- non-numeric --enforce-min is rejected with exit 2 (before any card processing) ---
+set +e
+bash "$CHK" --cards "$tmpdir/cards.json" --context "$tmpdir/ctx.json" --enforce-min not-a-number 2>/dev/null; rc=$?
+set -e
+[ "$rc" -eq 2 ] || { echo "FAIL non-numeric --enforce-min should exit 2, got $rc"; exit 1; }
+
 echo "OK test_check_lessons.sh"

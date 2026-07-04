@@ -20,6 +20,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$CTX" ] && [ -f "$CTX" ] || { echo "check_lessons.sh: --context FILE required" >&2; exit 2; }
+printf '%s' "$EMIN" | grep -qE '^[0-9]+(\.[0-9]+)?$' || { echo "check_lessons.sh: --enforce-min must be numeric" >&2; exit 2; }
 if [ -z "$CARDS" ] || [ ! -f "$CARDS" ]; then
   echo '{"violations":[],"advisories":[],"checked":0}'
   exit 0
