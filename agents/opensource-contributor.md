@@ -318,12 +318,16 @@ and abort the run.
 ### Phase 6: Open the draft PR
 
 ```bash
+# Agent-origin disclosure (default ON). Suppress with SUPERHUMAN_ATTRIBUTION=off.
+PR_BODY=$(printf '%s' "$PR_BODY_FROM_PLAN" \
+  | "${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/pr_body_with_attribution.sh")
+
 gh pr create --repo "$OWNER_REPO" \
   --base "$DEFAULT_BRANCH" \
   --head "$AUTH_USER:$BRANCH" \
   --draft \
   --title "$PR_TITLE_FROM_PLAN" \
-  --body "$PR_BODY_FROM_PLAN"
+  --body "$PR_BODY"
 
 PR_URL=$(gh pr view "$BRANCH" --repo "$OWNER_REPO" --json url --jq .url)
 
@@ -546,15 +550,18 @@ Inherit `state_dir`, `atomic_write_json`, `require_lock` from `SHARED_STATE.md`.
   `IMPACT_AUDIT_BLOCKED` require a human decision. Do not auto-retry.
 - **Fork-only push target.** `origin` is always the fork. `upstream` is
   the source repo. Builder never pushes to upstream.
-- **Single-author rule (gh-derived).** Every commit and PR body produced
-  by this chain is authored by the one `gh`-authenticated GitHub user
-  running the plugin (derived from `gh` in Phase 0 — never hard-coded)
-  with no `Co-Authored-By:` trailers and no AI attribution (no
-  "Generated with Claude", "🤖 Generated with [Claude Code]",
-  "noreply@anthropic.com"). Phase 0 pins the local git identity after
-  clone; builder Step 3 re-applies and verifies. PR titles and bodies
-  assembled from plan metadata must never contain these strings — if they
-  would, strip them before calling `gh pr create`.
+- **Single-author commit rule (gh-derived, commit-scoped).** Every *commit*
+  produced by this chain is authored by the one `gh`-authenticated GitHub user
+  running the plugin (derived from `gh` in Phase 0 — never hard-coded) with no
+  `Co-Authored-By:` trailers and no AI attribution (no "Generated with Claude",
+  "🤖 Generated with [Claude Code]", "noreply@anthropic.com"). Phase 0 pins the
+  local git identity after clone; builder Step 3 re-applies and verifies.
+- **PR bodies disclose Superhuman origin by default.** Phase 6 pipes the
+  plan-derived body through
+  `scripts/orchestrator/pr_body_with_attribution.sh`, which appends a one-line
+  footer linking the Superhuman plugin. Suppress it with
+  `SUPERHUMAN_ATTRIBUTION=off` (also `false`/`0`/`no`). That footer is the only
+  attribution permitted in a PR body; do not hand-add Claude/Anthropic strings.
 - **Prune `mistakes.md` on session start.** Phase 0.5 runs awk-based
   pruning to keep entries within 90 days. The file was growing unbounded
   before; old mistakes poison the planner's "known mistakes" prompt.

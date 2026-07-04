@@ -5,7 +5,7 @@ Thanks for your interest. This is a [Claude Code](https://claude.com/claude-code
 ## Ground rules
 
 - **Be kind and assume good faith.** See [our Code of Conduct](#code-of-conduct).
-- **Keep the safety model intact.** This plugin pushes real code to real repos. Any change that weakens a [safety rail](./SECURITY.md) (single-author rule, force-with-lease, CI allowlist, prompt-injection halt, reputation cooldown) needs an explicit rationale and will get extra scrutiny.
+- **Keep the safety model intact.** This plugin pushes real code to real repos. Any change that weakens a [safety rail](./SECURITY.md) (single-author *commit* rule, force-with-lease, CI allowlist, prompt-injection halt, reputation cooldown) needs an explicit rationale and will get extra scrutiny.
 - **Lossless refactors.** Several past releases (e.g. v0.5.0 bash extraction) had "lose no behavior" as a hard constraint. If you're refactoring, prove the behavior is preserved with tests.
 
 ## Repo layout

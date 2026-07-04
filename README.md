@@ -285,10 +285,16 @@ File ownership (sole-writer + readers) is documented in `agents/SHARED_STATE.md`
 - **CI allowlist.** `builder` only runs commands pre-approved in `allowed_commands.json`. `repo-profiler` seeds the allowlist from `.github/workflows/*.yml`; anything outside it requires explicit user approval.
 - **Force-with-lease only.** Pushes use `--force-with-lease` to the contributor's fork — never upstream, never plain `--force`.
 - **Prompt-injection halt.** `resolve-comments` classifies any comment asking it to run shell commands, modify files outside the diff, or fetch from external URLs as `suspicious`, halts the run, and logs to `mistakes.md`.
-- **Single-author commit rule.** Every commit is authored by the human contributor identity configured in `builder`.
+- **Single-author commit rule (commit-scoped).** Every commit is authored by the human contributor identity derived from `gh` in `builder` — no co-author trailers or AI attribution, verified before push. PR *bodies* disclose Superhuman origin by default; see [Configuration](#configuration).
 - **Reputation cooldown.** Repos where PRs consistently get rejected or ignored land in `repo_cooldown.json` and are skipped by `repo-finder` until the cooldown window expires.
 
 See [SECURITY.md](./SECURITY.md) for the full safety model and how to report a vulnerability.
+
+## Configuration
+
+| Env var | Default | Effect |
+| --- | --- | --- |
+| `SUPERHUMAN_ATTRIBUTION` | `on` | Every PR the plugin opens appends a one-line footer to the **PR body** disclosing it was produced with Superhuman. Set to `off` (also `false`/`0`/`no`, case-insensitive) to suppress it. Commits are never touched either way. |
 
 ## Development
 
