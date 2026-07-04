@@ -26,7 +26,10 @@ The orchestrator passes:
 ## Shared state
 
 See `SHARED_STATE.md`. You are the sole writer of `repo_profile.json`,
-`ci_commands.json`, and the initial seed of `allowed_commands.json`.
+`ci_commands.json`, `repo_scan.json`, and the initial seed of
+`allowed_commands.json`. The `repo_scan.json` you publish is read by the
+`lesson-distiller` to ground its architecture dossier — the distiller never
+writes the scan itself (single-writer contract).
 
 ## Workflow
 
@@ -193,6 +196,27 @@ The builder's pre-push step filters `layers[]` against the set of
 changed files in the diff and runs only the matching smokes. An empty
 `layers[]` is fine — the builder skips the step.
 
+### Step 5.7: Publish the structural scan (`repo_scan.json`)
+
+The `lesson-distiller` grounds its architecture dossier on a deterministic
+structural scan of the worktree — module boundaries (`source_dirs`), test
+locations (`test_dirs`), a reuse catalog of top-level symbols
+(`top_symbols`), and languages. Publish it here; you are the sole writer,
+and the distiller only reads it.
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/profiler/write_repo_scan.sh \
+  --repo "$OWNER_REPO" --worktree "$WORKDIR" \
+  || echo "repo-profiler: repo_scan.json not published (scan invalid); dossier seed will be skipped" >&2
+```
+
+`write_repo_scan.sh` runs the scan, validates it against
+`repo_scan.schema.json`, and atomically publishes `repo_scan.json`; on
+invalid output it aborts WITHOUT publishing (a garbage scan must never
+ground the dossier). Publication is best-effort — a failed scan is logged
+and does NOT fail profiling; the distiller simply skips seeding until a
+valid scan exists.
+
 ### Step 6: Seed `allowed_commands.json` if missing
 
 ```bash
@@ -284,6 +308,7 @@ CI commands:
 Wrote:
   $STATE_DIR/repo_profile.json
   $STATE_DIR/ci_commands.json
+  $STATE_DIR/repo_scan.json (M source dirs, K symbols cataloged)
   $STATE_DIR/generated_files.json (N entries)
   $STATE_DIR/allowed_commands.json (seeded)
 ```

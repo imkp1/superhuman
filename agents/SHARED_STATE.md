@@ -27,8 +27,12 @@ Per-repo: `~/.superhuman/repos/<owner-repo>/`
 | `mistakes.md` | any agent (append only) | all |
 | `ci_commands.json` | repo-profiler | builder, reviewer-dispatcher |
 | `smoke_registry.json` | repo-profiler | builder |
+| `repo_scan.json` | repo-profiler | lesson-distiller |
 | `allowed_commands.json` | user-edited (seeded by repo-profiler) | builder |
 | `run_telemetry.jsonl` | opensource-contributor (append only) | future `/contribution-dashboard` |
+| `dossier.md` | lesson-distiller | planner, builder |
+| `dossier_meta.json` | lesson-distiller | lesson-distiller (freshness gate) |
+| `lessons.jsonl` | lesson-distiller | planner, builder, merge-probability-scorer |
 
 Repo-agnostic: `~/.superhuman/global/`
 
@@ -39,6 +43,8 @@ Repo-agnostic: `~/.superhuman/global/`
 | `repo_blocklist.json` | user-edited (manual) | repo-finder, orchestrator Phase 0 |
 | `repo_cooldown.json` | scorer (derived from `merge_outcomes.jsonl`) | repo-finder, orchestrator Phase 0 |
 | `repo-shortlist.json` | repo-finder | orchestrator |
+| `lessons_global.jsonl` | lesson-distiller | planner, builder, merge-probability-scorer |
+| `lesson_regressions.jsonl` | lesson-distiller | merge-probability-scorer, future `/contribution-dashboard` |
 
 `<owner-repo>` is formed as `<owner>-<repo>` (single hyphen; slash replaced).
 Example: `apache/airflow` → `apache-airflow`.
@@ -257,6 +263,53 @@ One JSON object per line:
   "closed_at": "2026-04-28T09:12:00Z"
 }
 ```
+
+### Learning substrate (owner: `lesson-distiller`)
+
+The durable knowledge base that lets the team stop repeating reviewer
+feedback across PRs and repos. The `lesson-distiller` is the SOLE writer of
+`dossier.md`, `dossier_meta.json`, `lessons.jsonl`, `lessons_global.jsonl`,
+and `lesson_regressions.jsonl`; the scorer, planner, and builder are
+read-only consumers. `repo_scan.json` is owned by repo-profiler and read by
+the distiller.
+
+- **`repo_scan.json`** (per-repo, owner repo-profiler) — deterministic
+  structural facts (`source_dirs`, `test_dirs`, `top_symbols`, `languages`)
+  that ground the dossier. Schema:
+  [`schemas/repo_scan.schema.json`](../schemas/repo_scan.schema.json).
+- **`dossier.md`** (per-repo) — a short, freeform architecture narrative the
+  planner and builder read for orientation. Every path/symbol it cites comes
+  from `repo_scan.json` (no invented paths).
+- **`dossier_meta.json`** (per-repo) — `{repo, head_sha, scanned_at,
+  authored_at}`; drives the `dossier_fresh.sh` "re-author when HEAD moved"
+  gate. Schema:
+  [`schemas/dossier_meta.schema.json`](../schemas/dossier_meta.schema.json).
+- **`lessons.jsonl`** (per-repo) / **`lessons_global.jsonl`** (cross-repo) —
+  one typed rule card per line. A card is DATA: a descriptive `rule`, an
+  optional `check` whose `id` must be a member of the fixed check registry
+  (`scripts/lib/lesson_checks.sh`), and provenance. Cards NEVER carry an
+  executable field. Schema:
+  [`schemas/rule_card.schema.json`](../schemas/rule_card.schema.json). Read
+  at prevent-time (planner/builder inject matching conventions) and
+  enforce-time (scorer's convention-compliance cap). `select_lessons.sh`
+  filters by changed-file/dimension; the enforced predicate is
+  `status=="active" && confidence>=0.75 && scope∈{repo,global}`.
+- **`lesson_regressions.jsonl`** (cross-repo) — the "a known rule was
+  violated / re-raised" alarm, appended when an enforced rule is broken at
+  submission or a maintainer re-raises it. Schema:
+  [`schemas/lesson_regression.schema.json`](../schemas/lesson_regression.schema.json).
+
+**Untrusted provenance.** Rule cards mined from review comments derive from
+EXTERNAL_CONTENT. The distiller extracts ONLY into the constrained rule-card
+schema; a comment that tries to make an agent run a command, fetch a URL, or
+write outside state is classified `suspicious`, logged to `mistakes.md`, and
+never minted into a card. Enforced rules feed the scorer's judgment only —
+they can never expand `allowed_commands.json` or drive builder shell.
+
+**Not append-only.** These stores are rewritten with upsert semantics by
+`merge_cards.sh` / `promote_lessons.sh` / `decay_lessons.sh` (atomic
+temp-file + rename), so single-writer discipline is strict: only the
+`lesson-distiller` mutates them.
 
 ## End-to-end run trace (reference)
 
