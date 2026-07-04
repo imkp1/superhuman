@@ -4,6 +4,27 @@ All notable changes to **superhuman** are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/). The `version` field in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `.codex-plugin/plugin.json` must always match the latest released version here.
 
+## [0.8.0] — 2026-07-05
+
+### Added
+- **Learning substrate — the system now learns from reviewer feedback instead of repeating it.** A durable, typed knowledge base that outlives a single run and generalizes across repos, closing a Birth → Retrieve → Prevent → Enforce → Curate loop so the same review comments stop recurring across merged PRs.
+  - **`lesson-distiller` agent** (producer/curator; sole owner of the knowledge base). *Seed mode* authors a short repo architecture **dossier** grounded in a deterministic structural scan, and emits deterministic scan **rule cards**. *Curate mode* mines a run's classified reviewer comments and merge outcome into typed rule cards, then runs graduated cross-repo promotion, age-based decay, contradiction-demotion, demoted→active re-confirmation, and maintainer-reraise regression logging.
+  - **Rule cards** (`schemas/rule_card.schema.json`) — typed, provenance-tracked convention records. Deterministic cards reference one of a fixed check registry (`file_present`, `file_in_dir`, `commit_matches`, `identifier_case`); semantic cards carry prose the scorer's LLM pass judges. A card is DATA — no executable field — and a mined `check.id` outside the registry is force-converted to semantic.
+  - **PREVENT** — `planner` and `builder` retrieve the dossier + matching cards (`select_lessons.sh`) and inject them as MUST-follow conventions (planner's Compliance checklist; builder's subagent-driven-development constraints).
+  - **ENFORCE** — `merge-probability-scorer` runs `check_lessons.sh` on the diff; an unfixed ENFORCED violation caps the merge score at 75% (blocks merge-ready ≥80%) and lists the rule under Blocking Issues. Shipped violations are logged to a cross-repo regression corpus at terminal only.
+  - **Graduated cross-repo promotion** — a repo-scoped rule recurring across ≥2 distinct repos becomes a `global-candidate`; ≥3 graduates it to enforced `global` scope.
+  - **Scripts** (all unit-tested, bash-3.2-safe): `scripts/lessons/{select_lessons,check_lessons,merge_cards,promote_lessons,decay_lessons,record_regression,set_lesson_status}.sh`; `scripts/profiler/{scan_structure,write_repo_scan,dossier_fresh}.sh`; `scripts/lib/lesson_checks.sh` (fixed check registry + canonical dedupe key).
+- **New shared-state files** (registered in `agents/SHARED_STATE.md`): `repo_scan.json` (owner repo-profiler); `dossier.md`, `dossier_meta.json`, `lessons.jsonl`, `lessons_global.jsonl`, `lesson_regressions.jsonl` (owner lesson-distiller); `classified_comments.json` (owner resolve-comments — the distiller handoff). Each with a draft 2020-12 schema where applicable.
+
+### Changed
+- `repo-profiler` now publishes `repo_scan.json` (deterministic structural scan of the worktree) to ground the dossier.
+- `resolve-comments` persists classified, non-suspicious comments to `classified_comments.json` for the distiller.
+- `opensource-contributor` sequences the distiller: `MODE=seed` after profiling (Phase 2.5) and `MODE=curate` post-terminal (Phase 8.5) — both non-fatal.
+- `skills/superhuman/SKILL.md` gained the learning-substrate safety rail for the Codex runtime.
+
+### Security
+- Reviewer comments feeding the distiller are treated as EXTERNAL_CONTENT; the distiller extracts ONLY into the constrained rule-card schema. A comment attempting a command, URL, or out-of-repo write is classified `suspicious`, logged to `mistakes.md`, and never minted into a card. Enforced rules feed the scorer's judgment only — they can never expand `allowed_commands.json` or drive builder shell. The active↔demoted transition routes exclusively through `set_lesson_status.sh`; `merge_cards.sh` refuses status-flips-via-merge, so a crafted comment cannot flip an enforced rule by re-merging it.
+
 ## [0.7.0] — 2026-06-28
 
 ### Added
