@@ -19,7 +19,7 @@ FALLBACK_URL='https://github.com/gaurav0107/superhuman'
 # an explicit attribution artifact — so legitimate prose is preserved.
 scrub_attribution() {
   awk '
-  function is_attr(line,   lraw, a) {
+  function is_attr(line, allowGeneric,   lraw, a) {
     lraw = tolower(line)
     if (index(lraw, "opened with [superhuman]"))        return 1
     if (index(lraw, "github.com/gaurav0107/superhuman")) return 1
@@ -32,7 +32,8 @@ scrub_attribution() {
     gsub(/^(>[[:space:]]*)+/, "", a)
     sub(/^<sub>[[:space:]]*/, "", a)
     if (a ~ /^co-authored-by:/) return 1
-    if (lraw ~ /(prepared|generated|opened|created|made|built|authored|written|produced|assisted|with assistance)/ &&
+    if (allowGeneric &&
+        lraw ~ /(prepared|generated|opened|created|made|built|authored|written|produced|assisted|with assistance)/ &&
         lraw ~ /(superhuman|claude|anthropic|ai agent|contribution agent|contribution plugin)/) return 1
     return 0
   }
@@ -47,11 +48,14 @@ scrub_attribution() {
       if (s ~ /^-{3,}$/) lastHR = i
       if (lines[i] ~ /^[[:space:]]*$/) lastBlank = i
     }
-    if (lastHR > 0) zoneStart = lastHR + 1
-    else if (lastBlank > 0) zoneStart = lastBlank + 1
-    else zoneStart = NR
+    # A structural signal (---, or a blank line) justifies the fuzzy verb+name
+    # rule. Without one, the "final line" fallback trusts only explicit catches,
+    # so a short single-paragraph bodys last line of real prose is never stripped.
+    if (lastHR > 0)         { zoneStart = lastHR + 1;    allowGeneric = 1 }
+    else if (lastBlank > 0) { zoneStart = lastBlank + 1; allowGeneric = 1 }
+    else                    { zoneStart = NR;            allowGeneric = 0 }
     m = 0
-    for (i = 1; i <= NR; i++) { if (i >= zoneStart && is_attr(lines[i])) continue; m++; keep[m] = lines[i] }
+    for (i = 1; i <= NR; i++) { if (i >= zoneStart && is_attr(lines[i], allowGeneric)) continue; m++; keep[m] = lines[i] }
     # collapse consecutive blank lines
     o = 0; prevblank = 0
     for (i = 1; i <= m; i++) {

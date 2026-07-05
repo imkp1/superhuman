@@ -98,6 +98,16 @@ Within the footer zone, a line is **removed** only when, after unwrapping
 optional leading/trailing decoration, the **entire trimmed line** matches an
 attribution pattern.
 
+**Structural-signal gate.** A `---` or a blank line is the signal that a footer
+convention is actually in play, so the fuzzy verb+name rule (below) only runs
+when the zone came from one of those. In the last-resort fallback — no rule and
+no blank line anywhere, so the zone is "just the final line" — only the
+**explicit catches** apply; the fuzzy rule is disabled. This keeps a short
+single-paragraph body's final line of real prose (which may innocently
+co-mention a verb and a tool name) from being stripped. Residual: a structureless
+rogue line matching *only* the fuzzy rule (no URL/marker/email/etc.) is left in
+place — rare, and the appended canonical footer still discloses origin.
+
 **Unwrapping (applied before matching, not mutating kept lines):** strip a
 leading blockquote `>`; a leading `🤖`/emoji or `*`/`_` markdown emphasis; and
 surrounding `<sub>…</sub>` or `<sup>…</sup>` tags. Matching is case-insensitive.
