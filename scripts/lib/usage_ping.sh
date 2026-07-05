@@ -26,7 +26,7 @@ done
 #    backgrounded/redirected caller; falls back to stderr where no tty).
 if [ ! -f "$FLAG_FILE" ]; then
   mkdir -p "$GLOBAL_DIR"
-  msg="superhuman records anonymous usage counts (your GitHub username, run count, PR count) to help the maintainer measure adoption. Disable with SUPERHUMAN_TELEMETRY=off — see TELEMETRY.md."
+  msg="superhuman records basic usage (a per-run event with your GitHub username and whether a PR was opened) to help the maintainer measure adoption. Disable with SUPERHUMAN_TELEMETRY=off — see TELEMETRY.md."
   { echo "$msg" > /dev/tty; } 2>/dev/null || echo "$msg" >&2
   printf '{"enabled":true}\n' > "$FLAG_FILE"
 fi

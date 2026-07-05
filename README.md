@@ -316,9 +316,11 @@ Issues and pull requests welcome. Start with [CONTRIBUTING.md](./CONTRIBUTING.md
 
 ## Telemetry
 
-superhuman sends basic, **opt-out** adoption telemetry (your GitHub username,
-run count, PR count) to the maintainer's PostHog project. No repo, issue, or
-code data is ever sent. Disable with `SUPERHUMAN_TELEMETRY=off` or
+superhuman sends basic, **opt-out** adoption telemetry — one per-run event
+carrying your GitHub username and whether a PR was opened — to the maintainer's
+PostHog project. No repo, issue, or code data is ever sent. Invocation and
+PR counts are derived in PostHog, not sent from your machine. Disable with
+`SUPERHUMAN_TELEMETRY=off` or
 `scripts/lib/telemetry_optout.sh`. Full details: [TELEMETRY.md](./TELEMETRY.md).
 
 ## License
