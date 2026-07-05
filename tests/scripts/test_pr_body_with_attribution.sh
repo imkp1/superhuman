@@ -5,28 +5,86 @@ export CLAUDE_PLUGIN_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT="$CLAUDE_PLUGIN_ROOT/scripts/orchestrator/pr_body_with_attribution.sh"
 
 fail() { echo "FAIL: $1"; exit 1; }
+marker_count() { printf '%s' "$1" | grep -cF 'Opened with [Superhuman]'; }
 
 BASE='## Summary
 Fixes the thing.'
 
-# 1. Default (unset): footer appended, base body preserved, repo url present.
+# 1. Default (unset): footer appended, base body preserved, repo url present, one marker.
 unset SUPERHUMAN_ATTRIBUTION 2>/dev/null || true
 OUT="$(printf '%s' "$BASE" | bash "$SCRIPT")"
-printf '%s' "$OUT" | grep -qF 'Opened with [Superhuman]'        || fail "default: footer missing"
 printf '%s' "$OUT" | grep -qF 'Fixes the thing.'                || fail "default: base body lost"
 printf '%s' "$OUT" | grep -qF 'github.com/gaurav0107/superhuman' || fail "default: repo url missing"
+[ "$(marker_count "$OUT")" = "1" ]                              || fail "default: marker count != 1"
 
-# 2. Disabling values suppress the footer and return the body byte-for-byte.
+# 2a. Disable + clean body: returned byte-for-byte.
 for v in off OFF false 0 no; do
   OUT="$(printf '%s' "$BASE" | SUPERHUMAN_ATTRIBUTION="$v" bash "$SCRIPT")"
-  [ "$OUT" = "$BASE" ] || fail "disable '$v': body not returned verbatim"
+  [ "$OUT" = "$BASE" ] || fail "disable '$v': clean body not returned verbatim"
 done
 
-# 3. Idempotency: a body that already carries the footer is unchanged, marker once.
+# 2b. Disable + rogue attribution: rogue line scrubbed, no footer, base kept.
+ROGUE="$BASE
+<sub>Prepared with assistance from the Superhuman open-source contribution plugin.</sub>"
+OUT="$(printf '%s' "$ROGUE" | SUPERHUMAN_ATTRIBUTION=off bash "$SCRIPT")"
+printf '%s' "$OUT" | grep -qiF 'Prepared with assistance' && fail "disable: rogue line not scrubbed"
+printf '%s' "$OUT" | grep -qiF 'superhuman'                && fail "disable: superhuman mention remains"
+printf '%s' "$OUT" | grep -qF  'Fixes the thing.'          || fail "disable: base body lost"
+
+# 3. Idempotency: re-running a footered body yields the same output, one marker.
 WITH_FOOTER="$(printf '%s' "$BASE" | bash "$SCRIPT")"
 AGAIN="$(printf '%s' "$WITH_FOOTER" | bash "$SCRIPT")"
-[ "$AGAIN" = "$WITH_FOOTER" ] || fail "idempotency: output changed on second pass"
-COUNT="$(printf '%s' "$AGAIN" | grep -cF 'Opened with [Superhuman]')"
-[ "$COUNT" = "1" ] || fail "idempotency: marker count = $COUNT (want 1)"
+[ "$AGAIN" = "$WITH_FOOTER" ]           || fail "idempotency: output changed on second pass"
+[ "$(marker_count "$AGAIN")" = "1" ]    || fail "idempotency: marker count != 1"
+
+# 4. Rogue <sub> line, attribution ON: stripped, replaced by exactly one canonical footer.
+OUT="$(printf '%s' "$ROGUE" | bash "$SCRIPT")"
+printf '%s' "$OUT" | grep -qiF 'Prepared with assistance' && fail "on: rogue line not scrubbed"
+printf '%s' "$OUT" | grep -qF 'Fixes the thing.'          || fail "on: base body lost"
+[ "$(marker_count "$OUT")" = "1" ]                        || fail "on: marker count != 1"
+
+# 5. Model wrote its own (non-canonical) Superhuman line: no double attribution.
+MODEL_FOOTER="$BASE
+
+---
+Opened with Superhuman (https://github.com/gaurav0107/superhuman)."
+OUT="$(printf '%s' "$MODEL_FOOTER" | bash "$SCRIPT")"
+[ "$(marker_count "$OUT")" = "1" ]                                       || fail "double-attr: marker count != 1"
+[ "$(printf '%s' "$OUT" | grep -cF 'github.com/gaurav0107/superhuman')" = "1" ] || fail "double-attr: url appears more than once"
+
+# 6. Claude/AI attribution in body: stripped; only the canonical footer remains.
+AI="$BASE
+
+🤖 Generated with Claude Code
+Co-authored-by: Claude <noreply@anthropic.com>"
+OUT="$(printf '%s' "$AI" | bash "$SCRIPT")"
+printf '%s' "$OUT" | grep -qiF 'Generated with Claude' && fail "ai: claude line not scrubbed"
+printf '%s' "$OUT" | grep -qiF 'Co-authored-by'        && fail "ai: co-author trailer not scrubbed"
+printf '%s' "$OUT" | grep -qiF 'noreply@anthropic.com' && fail "ai: anthropic email not scrubbed"
+[ "$(marker_count "$OUT")" = "1" ]                     || fail "ai: marker count != 1"
+
+# 7. False-positive guard: legitimate prose mentioning tools/verbs is preserved.
+LEGIT='## Summary
+This fixes the Claude SDK timeout.
+We generated the config with make.'
+OUT="$(printf '%s' "$LEGIT" | bash "$SCRIPT")"
+printf '%s' "$OUT" | grep -qF 'This fixes the Claude SDK timeout.' || fail "fp: claude-sdk sentence stripped"
+printf '%s' "$OUT" | grep -qF 'We generated the config with make.' || fail "fp: generated-with-make sentence stripped"
+[ "$(marker_count "$OUT")" = "1" ]                                 || fail "fp: marker count != 1"
+
+# 8. Mid-body '---' separator preserved (only trailing attribution is touched).
+SECT='## Part 1
+alpha
+
+---
+
+## Part 2
+beta'
+OUT="$(printf '%s' "$SECT" | bash "$SCRIPT")"
+printf '%s' "$OUT" | grep -qF '## Part 1' || fail "sect: part 1 lost"
+printf '%s' "$OUT" | grep -qF '## Part 2' || fail "sect: part 2 lost"
+printf '%s' "$OUT" | grep -qF 'beta'      || fail "sect: content after --- lost"
+# mid-body '---' plus the footer separator == 2 horizontal rules.
+[ "$(printf '%s' "$OUT" | grep -cE '^-{3,}$')" = "2" ] || fail "sect: mid-body '---' not preserved"
 
 echo "OK test_pr_body_with_attribution.sh"
