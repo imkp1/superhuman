@@ -1,0 +1,86 @@
+name: Release tag on version bump
+
+# When a version bump lands on `main` (e.g. a merged release PR), cut the
+# matching git tag and GitHub Release automatically. Idempotent: if the tag
+# already exists the run is a no-op, so ordinary merges that don't touch the
+# version are harmless. Source of truth is .claude-plugin/plugin.json; the other
+# two manifests must agree or the run fails loudly rather than tagging a mismatch.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history + tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve version and verify the three manifests agree
+        id: ver
+        run: |
+          set -euo pipefail
+          P=$(jq -r '.version' .claude-plugin/plugin.json)
+          M=$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)
+          C=$(jq -r '.version' .codex-plugin/plugin.json)
+          [ -n "$P" ] && [ "$P" != "null" ] || { echo "::error::no .version in .claude-plugin/plugin.json"; exit 1; }
+          if [ "$P" != "$M" ] || [ "$P" != "$C" ]; then
+            echo "::error::manifest versions disagree — plugin=$P marketplace=$M codex=$C"
+            exit 1
+          fi
+          echo "version=$P" >> "$GITHUB_OUTPUT"
+          echo "tag=v$P"     >> "$GITHUB_OUTPUT"
+
+      - name: Skip if the tag already exists
+        id: exists
+        env:
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "$(git tag --list "$TAG")" ]; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $TAG already exists — nothing to release."
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract release notes from CHANGELOG
+        if: steps.exists.outputs.already == 'false'
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Print the body of the "## [VERSION]" section, up to the next "## [" header.
+          awk -v prefix="## [$VERSION]" '
+            /^## \[/ { if (started) exit;
+                       if (substr($0, 1, length(prefix)) == prefix) { started=1; next } }
+            started { print }
+          ' CHANGELOG.md > release_notes.md
+          if [ ! -s release_notes.md ]; then
+            printf "Release %s\n" "$TAG" > release_notes.md
+          fi
+
+      - name: Create tag and GitHub Release
+        if: steps.exists.outputs.already == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --notes-file release_notes.md
+          echo "Released $TAG at $GITHUB_SHA"
