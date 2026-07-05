@@ -30,3 +30,8 @@ content=$(jq -nc \
   '{outcome:$out, iterations:$iter, pr_url:(if $pr=="" then null else $pr end),
     completed_at:$ts, exit_reason:$reason}')
 atomic_write_json "$dir/run_summary.json" "$content"
+
+# Best-effort adoption telemetry (opt-out). Backgrounded + fully swallowed so it
+# can never block or fail the run. See scripts/lib/usage_ping.sh and TELEMETRY.md.
+"${CLAUDE_PLUGIN_ROOT}/scripts/lib/usage_ping.sh" \
+  --pr-url "$PR" --outcome "$OUT" >/dev/null 2>&1 & disown 2>/dev/null || true

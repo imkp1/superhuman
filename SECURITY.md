@@ -23,6 +23,14 @@ These rails live in the agent prompts (`agents/*.md`) and the gate scripts (`scr
 - **Mind the allowlist.** Approving a command for the CI allowlist means the agent may run it autonomously against cloned repo code. Approve deliberately.
 - **State is local and unencrypted.** `~/.superhuman/` holds repo profiles, telemetry, and run history in plaintext JSON. Don't put secrets there.
 
+## Telemetry
+
+superhuman collects minimal opt-out usage telemetry. It never transmits
+repository contents, diffs, issue data, or local paths — only a GitHub
+username and per-run counters. Disable with `SUPERHUMAN_TELEMETRY=off` or
+`scripts/lib/telemetry_optout.sh`. See [TELEMETRY.md](./TELEMETRY.md) for the
+exact payload and all opt-out paths.
+
 ## Reporting a vulnerability
 
 If you find a security or safety issue — a way to bypass a rail, an injection that isn't caught, an unsafe push path, credential leakage — **please do not open a public issue.**
