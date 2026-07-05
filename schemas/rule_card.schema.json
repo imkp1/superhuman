@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gaurav0107/superhuman/schemas/rule_card.schema.json",
+  "title": "rule_card",
+  "description": "One learned, enforceable convention. One object per line in lessons.jsonl (repo scope) or lessons_global.jsonl (global / global-candidate scope). Owner (sole writer): lesson-distiller. Retrieved by scripts/lessons/select_lessons.sh; deterministic cards enforced by scripts/lessons/check_lessons.sh, semantic cards by the scorer LLM pass. SAFETY: 'rule' is descriptive prose only — there is deliberately no command/URL/path-outside-repo field. A deterministic 'check.id' MUST be a member of the fixed registry in scripts/lib/lesson_checks.sh; an unknown check.id is forced to kind=semantic at write time and executes nothing.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["id", "scope", "match", "kind", "rule", "source", "confidence", "hits", "repos_seen", "status", "created", "last_confirmed"],
+  "properties": {
+    "id":     {"type": "string", "description": "stable slug, e.g. apache-airflow-newsfragment"},
+    "scope":  {"enum": ["repo", "global-candidate", "global"], "description": "repo=this repo only; global-candidate=advisory cross-repo; global=enforced cross-repo"},
+    "match": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "gate for where the card applies; an absent sub-field is a wildcard",
+      "properties": {
+        "repo":       {"type": "string", "description": "owner/repo; present for scope=repo"},
+        "lang":       {"type": "string"},
+        "paths":      {"type": "array", "items": {"type": "string"}, "description": "glob(s); card applies only when a changed file matches one"},
+        "dimensions": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "kind":   {"enum": ["deterministic", "semantic"], "description": "deterministic=scripted check; semantic=LLM-judged"},
+    "rule":   {"type": "string", "description": "descriptive prose only — never an instruction to run anything"},
+    "check": {
+      "type": "object",
+      "description": "present iff kind=deterministic; check.id must be in the fixed registry",
+      "required": ["id"],
+      "additionalProperties": true,
+      "properties": {
+        "id":   {"type": "string"},
+        "args": {"type": "object", "additionalProperties": true}
+      }
+    },
+    "source":     {"enum": ["comment", "outcome", "scan"]},
+    "evidence":   {"type": "array", "items": {"type": "string"}, "description": "human-readable provenance, e.g. PR#/reviewer/date"},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "hits":       {"type": "integer", "minimum": 0, "description": "number of independent confirmations"},
+    "repos_seen": {"type": "array", "items": {"type": "string"}, "description": "distinct repos this rule was confirmed on; drives graduation"},
+    "status":     {"enum": ["active", "demoted", "retired"]},
+    "created":        {"type": "string", "format": "date-time"},
+    "last_confirmed": {"type": "string", "format": "date-time"}
+  }
+}

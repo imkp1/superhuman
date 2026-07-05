@@ -252,6 +252,25 @@ exist. Validate each against its schema in `SHARED_STATE.md`. On violation,
 re-execute the contract once; on second failure, abort with
 `profile:schema-violation`.
 
+### Phase 2.5: Seed the learning dossier (non-fatal)
+
+repo-profiler also published `repo_scan.json` (deterministic structural facts).
+Read `agents/lesson-distiller.md` and execute its `MODE=seed` contract inline so
+the repo's architecture dossier and deterministic scan rule-cards are current
+for the planner and builder. Resolve the full HEAD sha the dossier freshness
+gate keys on (WORKDIR is at the default branch here, before any contribution
+commits):
+
+```bash
+HEAD_SHA=$(git -C "$WORKDIR" rev-parse HEAD)
+```
+
+Pass `REPO`, `WORKDIR`, `HEAD_SHA`, `MODE=seed`. The distiller is idempotent
+(it skips when the dossier already matches `HEAD_SHA`) and NON-FATAL: a seed
+failure logs and returns without aborting the run — planning proceeds without a
+refreshed dossier. Do not validate-and-abort on distiller output; losing a
+dossier is acceptable, stalling the run is not.
+
 ### Phase 3: Select an issue
 
 Read `agents/issue-selector.md` and execute its contract inline with
@@ -501,6 +520,28 @@ Mistakes logged: 1 (builder:ci_gate — pytest failure fixed iter 2)
 The phase counts MUST be derived from `run_telemetry.jsonl` rows for
 this run (filter by `started_at <= ts`). Do not hand-count from memory
 and do not invent numbers.
+
+### Phase 8.5: Curate lessons from the run (non-fatal, post-terminal)
+
+Runs AFTER the lock is released and the summary is printed, so a slow or failed
+curation can never delay terminal housekeeping. Read `agents/lesson-distiller.md`
+and execute its `MODE=curate` contract inline so this run's reviewer feedback
+and outcome update the durable knowledge base (mine rule cards, cross-repo
+promotion, decay, contradiction-demotion, maintainer-reraise regressions).
+
+```bash
+HEAD_SHA=$(git -C "$WORKDIR" rev-parse HEAD 2>/dev/null || echo "")
+DIFF_FILE="$STATE_DIR/final_diff.patch"
+gh pr diff "${PR_URL:-}" > "$DIFF_FILE" 2>/dev/null || : > "$DIFF_FILE"
+COMMENTS_FILE="$STATE_DIR/classified_comments.json"   # written by resolve-comments; may be absent
+```
+
+Pass `REPO`, `WORKDIR`, `HEAD_SHA`, `MODE=curate`, `OUTCOME` (from Phase 8),
+`DIFF_FILE`, and `COMMENTS_FILE` (omit the arg if that file does not exist — no
+PR review happened this run). The distiller is NON-FATAL: any failure logs and
+returns without affecting the already-final run. It records only
+`maintainer_reraise` regressions; the scorer's `record_outcome` above already
+recorded any `shipped_violation`, so they never double-count.
 
 ## Error handling
 

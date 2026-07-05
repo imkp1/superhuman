@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gaurav0107/superhuman/schemas/dossier_meta.schema.json",
+  "title": "dossier_meta",
+  "description": "Freshness metadata for the repo architectural dossier (dossier.md). Owner (sole writer): lesson-distiller. head_sha is copied from repo_scan.json; a re-scan is triggered when HEAD moves past this and the change touches structural paths.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["repo", "head_sha", "scanned_at", "authored_at"],
+  "properties": {
+    "repo":        {"type": "string"},
+    "head_sha":    {"type": "string", "description": "copied from repo_scan.json at authoring time"},
+    "scanned_at":  {"type": "string", "format": "date-time"},
+    "authored_at": {"type": "string", "format": "date-time"},
+    "scan_digest": {"type": "string"}
+  }
+}

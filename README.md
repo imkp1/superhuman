@@ -3,7 +3,7 @@
 > A multi-agent **harness** that contributes merge-quality pull requests to real open-source projects — and a **closed feedback loop** that scores its own work and iterates until a maintainer would merge it. Runs on [Claude Code](https://claude.com/claude-code) and Codex.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-0.7.1-green.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.6.0-green.svg)](./CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Claude%20Code%20%7C%20Codex-8A2BE2.svg)](https://claude.com/claude-code)
 
 Most agent tools are **open-loop**: generate once, hope it's good. superhuman is **closed-loop**. It scores its own pull request before opening it, finds the single weakest dimension, spends an iteration fixing exactly that, re-scores, and repeats until it converges. It's gradient descent on one objective — *will a maintainer merge this?* — with a prior learned from every past outcome.
@@ -67,11 +67,11 @@ A loop that opens PRs into other people's repos, unattended, is only safe if the
 
 - **Contracts, not vibes.** [`agents/SHARED_STATE.md`](./agents/SHARED_STATE.md) is a single source of truth for who writes each state file and who reads it — a concurrency contract that lets parallel runs share `~/.superhuman/` without corrupting it.
 - **Typed state.** Every shared-state file has a [JSON Schema](./schemas/) (draft 2020-12), validated at write time. State is data with a shape, not a free-for-all.
-- **Behavior split from shell.** Reasoning and safety prose live in agent prompts (`agents/*.md`); the deterministic `bash`/`jq` lives in versioned, unit-tested [`scripts/`](./scripts). 35 bash tests cover the scripts and every schema.
+- **Behavior split from shell.** Reasoning and safety prose live in agent prompts (`agents/*.md`); the deterministic `bash`/`jq` lives in versioned, unit-tested [`scripts/`](./scripts). 51 bash tests cover the scripts and every schema.
 - **Blast-radius auditing.** `impact-auditor` runs before any refactor to a shared function — it blocks the class of change that's correct in one execution context (Flask request time) and fatal in another (FastAPI startup).
 - **Hard safety rails.** Allowlisted CI commands only, `--force-with-lease` to a fork (never upstream, never plain `--force`), and a prompt-injection halt on any review comment that tries to make the agent run shell or fetch external URLs. See [Safety rails](#safety-rails).
 
-Orchestrator + 9 specialists + 1 shared-state contract. The orchestrator is thin: it owns the lock, sequences the phases, and enforces the cap and the threshold. The intelligence is in the specialists and the loop.
+Orchestrator + 10 specialists + 1 shared-state contract. The orchestrator is thin: it owns the lock, sequences the phases, and enforces the cap and the threshold. The intelligence is in the specialists and the loop.
 
 ## Supported runtimes
 
@@ -182,7 +182,7 @@ Each fleet run gets its own state dir, clone path, and `flock(2)` mutex — they
 
 ## Agents
 
-Orchestrator + 9 specialists + 1 shared-state contract document.
+Orchestrator + 10 specialists + 1 shared-state contract document.
 
 | Agent | Role |
 |---|---|
@@ -196,6 +196,7 @@ Orchestrator + 9 specialists + 1 shared-state contract document.
 | `merge-probability-scorer` | 10-dimension weighted rubric blended with historical merge outcomes. |
 | `reviewer-dispatcher` | Picks the weakest dimension and routes to the right specialist reviewer. |
 | `resolve-comments` | Classifies PR review comments; drafts replies or dispatches fixes. Halts on prompt-injection. |
+| `lesson-distiller` | Producer/curator of the durable knowledge base. Seeds the repo dossier + scan rule cards; mines reviewer feedback and merge outcomes into typed rule cards; runs cross-repo promotion, decay, and contradiction-demotion. |
 | `SHARED_STATE.md` | Single source of truth for file ownership, readers, and concurrency contract. Not an agent — read by all. |
 
 ## Commands
@@ -229,7 +230,8 @@ superhuman/
 │   ├── impact-auditor.md
 │   ├── merge-probability-scorer.md
 │   ├── reviewer-dispatcher.md
-│   └── resolve-comments.md
+│   ├── resolve-comments.md
+│   └── lesson-distiller.md
 ├── commands/                 # Slash commands
 │   ├── contribute.md
 │   ├── contribute-loop.md
@@ -237,10 +239,11 @@ superhuman/
 │   ├── contribution-fleet.md
 │   └── repo-finder.md
 ├── scripts/                  # Versioned shell extracted from agent prompts (v0.5.0+)
-│   ├── lib/                  # Shared helpers: state.sh, mistakes.sh, flake.sh, delim.sh
-│   ├── profiler/             # repo-profiler step implementations
+│   ├── lib/                  # Shared helpers: state.sh, mistakes.sh, flake.sh, delim.sh, lesson_checks.sh
+│   ├── profiler/             # repo-profiler steps + scan_structure/write_repo_scan/dossier_fresh
 │   ├── scorer/               # merge-probability-scorer step implementations
 │   ├── orchestrator/         # opensource-contributor + reputation_gate.sh + write_run_summary.sh
+│   ├── lessons/              # learning substrate: select/check/merge/promote/decay/record/set_lesson_status
 │   └── builder/              # ci_gate.sh, smoke_gate.sh, drift_linter.sh, push_force_with_lease.sh
 ├── schemas/                  # JSON Schema (draft 2020-12) for every shared-state file (v0.5.0+)
 │   └── *.schema.json
@@ -268,13 +271,20 @@ All persistent state lives under `~/.superhuman/`. Per-repo state is keyed by `<
 │       ├── mistakes.md
 │       ├── maintainer_tone.json
 │       ├── smoke_registry.json
-│       └── run_telemetry.jsonl
+│       ├── run_telemetry.jsonl
+│       ├── repo_scan.json               # structural scan (grounds the dossier)
+│       ├── dossier.md                   # architecture dossier (planner/builder read)
+│       ├── dossier_meta.json            # dossier freshness (head_sha gate)
+│       ├── lessons.jsonl                # per-repo rule cards
+│       └── classified_comments.json     # resolve-comments → distiller handoff
 └── global/
     ├── flake_signatures.md
     ├── merge_outcomes.jsonl             # feedback corpus for scorer calibration
     ├── repo_blocklist.json
     ├── repo_cooldown.json
-    └── repo-shortlist.json
+    ├── repo-shortlist.json
+    ├── lessons_global.jsonl             # promoted cross-repo rule cards
+    └── lesson_regressions.jsonl         # known-rule violated / re-raised alarm log
 ```
 
 File ownership (sole-writer + readers) is documented in `agents/SHARED_STATE.md`. Every shared-state file has a matching JSON Schema (draft 2020-12) under `schemas/`, validated at write time.
@@ -285,6 +295,7 @@ File ownership (sole-writer + readers) is documented in `agents/SHARED_STATE.md`
 - **CI allowlist.** `builder` only runs commands pre-approved in `allowed_commands.json`. `repo-profiler` seeds the allowlist from `.github/workflows/*.yml`; anything outside it requires explicit user approval.
 - **Force-with-lease only.** Pushes use `--force-with-lease` to the contributor's fork — never upstream, never plain `--force`.
 - **Prompt-injection halt.** `resolve-comments` classifies any comment asking it to run shell commands, modify files outside the diff, or fetch from external URLs as `suspicious`, halts the run, and logs to `mistakes.md`.
+- **Learned rules are data, not code.** The `lesson-distiller` mines reviewer feedback into typed rule cards constrained to a fixed schema; a comment attempting a command, URL, or out-of-repo write is classified `suspicious` and never becomes a rule. Deterministic cards may only reference a fixed check registry, and enforced rules feed the scorer's judgment only — they can never expand `allowed_commands.json` or run anything.
 - **Single-author commit rule (commit-scoped).** Every commit is authored by the human contributor identity derived from `gh` in `builder` — no co-author trailers or AI attribution, verified before push. PR *bodies* disclose Superhuman origin by default; see [Configuration](#configuration).
 - **Reputation cooldown.** Repos where PRs consistently get rejected or ignored land in `repo_cooldown.json` and are skipped by `repo-finder` until the cooldown window expires.
 

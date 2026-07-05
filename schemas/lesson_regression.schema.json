@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gaurav0107/superhuman/schemas/lesson_regression.schema.json",
+  "title": "lesson_regression",
+  "description": "One event per line in ~/.superhuman/global/lesson_regressions.jsonl: a known enforced rule was violated at submission (shipped_violation) or a maintainer re-raised a rule already in the store (maintainer_reraise). This is the 'same comment recurred = learning failed' alarm. Writers: lesson-distiller, merge-probability-scorer.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["rule_id", "repo", "kind", "ts"],
+  "properties": {
+    "rule_id": {"type": "string"},
+    "repo":    {"type": "string"},
+    "pr_url":  {"type": "string"},
+    "kind":    {"enum": ["shipped_violation", "maintainer_reraise"]},
+    "ts":      {"type": "string", "format": "date-time"}
+  }
+}

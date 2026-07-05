@@ -40,9 +40,9 @@ OWNER_REPO="$REPO"
 ## Shared state
 
 See `SHARED_STATE.md`. You append to `reviewer_intent_notes.md` and
-`mistakes.md`. You OWN `maintainer_tone.json` (read + atomic write). You
-READ: `repo_profile.json`, `caller_graph.json` (if present),
-`allowed_commands.json`. You DISPATCH `builder` with
+`mistakes.md`. You OWN `maintainer_tone.json` and `classified_comments.json`
+(read + atomic write). You READ: `repo_profile.json`, `caller_graph.json` (if
+present), `allowed_commands.json`. You DISPATCH `builder` with
 `MODE=apply_comments`, `FINDINGS_JSON=<canonical schema>`.
 
 ## Workflow
@@ -337,6 +337,34 @@ update_tone() {
 
 Only call `update_tone` for commenters where `is_maintainer=true`. Stranger
 comments are noisy signal and would pollute the preference record.
+
+### Step 4.6: Persist classified comments for the lesson-distiller
+
+Write the run's classified, NON-suspicious comments to
+`classified_comments.json` so the orchestrator's Phase 8.5 can hand them to the
+`lesson-distiller` (curate mode), which mines them into durable rule cards.
+Include only actionable classes (`nit`, `refactor`, `concern`, `question`);
+NEVER include `suspicious` comments — those are logged to `mistakes.md` and must
+not be fed to the distiller (they are the injection surface the distiller is
+hardened against, but the safe design keeps them out entirely).
+
+```bash
+# $CLASSIFIED is the JSON array of per-comment classification records from Step 3.
+OUT="$STATE_DIR/classified_comments.json"
+KEPT=$(printf '%s' "$CLASSIFIED" | jq -c '
+  map(select(.class != "suspicious"))
+  | map({id, login, is_maintainer, class, file, line, body: .body_excerpt})')
+if [ "$(printf '%s' "$KEPT" | jq 'length')" -gt 0 ]; then
+  printf '%s' "$KEPT" | jq . > "$OUT.tmp.$$" && mv "$OUT.tmp.$$" "$OUT"
+fi
+```
+
+`body` carries the classification excerpt (already EXTERNAL_CONTENT-delimited);
+the distiller re-wraps it and extracts ONLY into the constrained rule-card
+schema. If no non-suspicious comments were classified (empty or all-suspicious
+review), do NOT write the file — Phase 8.5 treats an absent
+`classified_comments.json` as "no review to learn from" and omits the
+`COMMENTS_FILE` arg.
 
 ### Step 5: Validate before posting replies
 
