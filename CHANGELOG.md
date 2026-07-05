@@ -4,6 +4,11 @@ All notable changes to **superhuman** are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/). The `version` field in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `.codex-plugin/plugin.json` must always match the latest released version here.
 
+## [0.6.1] — 2026-07-06
+
+### Fixed
+- **PR-body attribution is now rogue-proof — the canonical footer is the single source of truth.** `scripts/orchestrator/pr_body_with_attribution.sh` now *scrubs* any model-authored attribution line from the PR body before appending the deterministic `🤖 Opened with [Superhuman](…)` footer (or, with `SUPERHUMAN_ATTRIBUTION=off`, emitting the scrubbed body with no footer). This prevents a model-improvised, unlinked, fine-print disclosure line (or double attribution) from replacing the canonical linked footer. Scrubbing is scoped to the **footer zone** (after the last `---`, else the trailing paragraph, else the final line) and gated on a structural signal, so legitimate mid-body prose is never touched. The same pass also strips Claude/AI attribution (`🤖 Generated with…`, `Co-authored-by:`, `noreply@anthropic.com`) from the PR body, closing a gap where those were guarded only in commit messages. `agents/planner.md` gains a matching defense-in-depth rule: never author attribution in the PR body — the harness owns the canonical footer.
+
 ## [0.6.0] — 2026-07-05
 
 > First tagged release since `v0.5.1`. The interim `0.7.0` / `0.7.1` / `0.8.0` version bumps were manifest-only and never tagged, so their changes are consolidated into this release.
