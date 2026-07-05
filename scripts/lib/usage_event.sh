@@ -52,8 +52,10 @@ if [ -n "$kind" ]; then
       properties:{kind:$kind, version:$ver, prev_version:$prev}}' 2>/dev/null)
   if [ -n "$life" ]; then
     th_send "$life"
-    mkdir -p "$GLOBAL_DIR"
-    printf '{"version":"%s"}\n' "$version" > "$LAST_VERSION_FILE"
+    if [ "${SUPERHUMAN_TELEMETRY:-}" != "print" ]; then
+      mkdir -p "$GLOBAL_DIR"
+      printf '{"version":"%s"}\n' "$version" > "$LAST_VERSION_FILE"
+    fi
   fi
 fi
 

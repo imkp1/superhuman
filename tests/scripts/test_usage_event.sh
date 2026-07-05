@@ -91,4 +91,14 @@ bash "$SCRIPT" --command contribute
 grep -q 'unknown' "$CURL_LOG" || fail "should fall back to unknown distinct_id"
 teardown
 
+# 9. print mode lifecycle (install): payload previewed but cache NOT written
+#    (a one-shot preview run must not silently consume the install signal).
+setup; enable; ident
+[ -f "$HOME/.superhuman/global/last_version.json" ] && fail "precondition: last_version.json should not pre-exist"
+out=$(SUPERHUMAN_TELEMETRY=print bash "$SCRIPT" --command contribute 2>&1 >/dev/null)
+[ -f "$HOME/.superhuman/global/last_version.json" ] && fail "print mode: lifecycle cache must not be written"
+echo "$out" | grep -q 'superhuman_lifecycle' || fail "print mode: lifecycle payload should still be previewed"
+echo "$out" | grep -q '"kind":"install"'     || fail "print mode: lifecycle payload should show install kind"
+teardown
+
 echo "OK test_usage_event.sh"
