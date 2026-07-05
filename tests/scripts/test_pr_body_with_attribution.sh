@@ -127,4 +127,21 @@ OUT="$(printf '%s' "$DEGA" | bash "$SCRIPT")"
 [ "$(printf '%s' "$OUT" | grep -cF 'github.com/gaurav0107/superhuman')" = "1" ] || fail "degenerate: explicit url attribution not scrubbed"
 [ "$(marker_count "$OUT")" = "1" ]                                             || fail "degenerate: marker count != 1"
 
+# 13. Empty body: scrubs to empty, footer appended cleanly, exactly one marker.
+OUT="$(printf '%s' '' | bash "$SCRIPT")"
+[ "$(marker_count "$OUT")" = "1" ] || fail "empty: marker count != 1"
+
+# 14. Attribution-only body: the lone attribution line is scrubbed (explicit catch
+#     fires even in the no-structure fallback); result carries just the footer.
+OUT="$(printf '%s' '🤖 Opened with [Superhuman](https://github.com/gaurav0107/superhuman), an open-source contribution agent.' | bash "$SCRIPT")"
+[ "$(marker_count "$OUT")" = "1" ] || fail "attribution-only: marker count != 1"
+
+# 15. Documented residual (pins the structural-signal-gate cost): a rogue line with
+#     NO preceding blank/'---' is NOT scrubbed by the fuzzy rule. If this ever
+#     changes, revisit the gate deliberately.
+STRLESS='## Summary
+<sub>Prepared with assistance from the Superhuman plugin.</sub>'
+OUT="$(printf '%s' "$STRLESS" | SUPERHUMAN_ATTRIBUTION=off bash "$SCRIPT")"
+printf '%s' "$OUT" | grep -qiF 'prepared with assistance' || fail "residual: structureless rogue unexpectedly changed"
+
 echo "OK test_pr_body_with_attribution.sh"

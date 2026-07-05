@@ -272,7 +272,7 @@ return value directly still work.
   Superhuman/AI-tool credit lines. The harness appends the canonical Superhuman
   disclosure footer itself (`SUPERHUMAN_ATTRIBUTION`, via
   `scripts/orchestrator/pr_body_with_attribution.sh`); any such line you write
-  is stripped before the PR is opened.
+  will be stripped or replaced before the PR is opened.
 - **Name a single target symbol.** The builder's impact-audit step needs
   one symbol to crawl. If the fix involves multiple independent changes,
   list them as separate units and the orchestrator will run builder for
