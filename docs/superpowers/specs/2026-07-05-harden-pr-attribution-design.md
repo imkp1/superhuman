@@ -62,7 +62,8 @@ rogue-proof.
 |---|---|---|
 | Where to enforce | Fold a scrub pass into the existing `pr_body_with_attribution.sh` | Already the single Phase 6 choke point that owns PR-body attribution; already wired and unit-tested. No new files or pipe stages. |
 | Mechanism vs prompt | Deterministic scrub **plus** a one-line planner rule | Mirrors `builder.md`'s existing "prompt rule + deterministic guard" pattern. Prompt-only is exactly what failed on #428. |
-| Scrub matching | Full-line match (after unwrapping), requiring an attribution **verb + a tool/agent name** | Whole-line + verb+name keeps legitimate prose ("fixes the Claude SDK timeout", "generated the config with make") untouched. |
+| Scrub scope | **Footer zone only** (after the last `---`, else trailing paragraph, else final line) | Attribution lives at the end; scoping there preserves all mid-body prose — the primary false-positive safeguard. |
+| Scrub matching | Within the zone: full-line match requiring an attribution **verb + a tool/agent name**, plus explicit catches | Whole-line + verb+name is the secondary filter; keeps a real footer-zone sentence that isn't attribution intact. |
 | Scrub runs when attribution is off? | Yes | "Off" must mean *no* attribution, including rogue lines — otherwise off leaks a model-authored line. The flag only controls whether the canonical footer is re-appended. |
 
 ## Architecture
@@ -85,9 +86,17 @@ construction: a second pass strips and re-appends to the same result.
 
 ## Scrub specification
 
-`scrub_attribution()` processes the body line by line. A line is **removed**
-only when, after unwrapping optional leading/trailing decoration, the **entire
-trimmed line** matches an attribution pattern.
+`scrub_attribution()` scans only the **footer zone** — the region where
+attribution conventionally sits — and removes attribution lines there. The
+footer zone is: everything after the **last horizontal rule** (`---`); else, if
+there is no rule, the **trailing paragraph** (lines after the last blank line);
+else, if the body has no structure at all, just the **final line**. Lines
+before the footer zone are never touched, so legitimate mid-body prose is
+preserved regardless of what it says.
+
+Within the footer zone, a line is **removed** only when, after unwrapping
+optional leading/trailing decoration, the **entire trimmed line** matches an
+attribution pattern.
 
 **Unwrapping (applied before matching, not mutating kept lines):** strip a
 leading blockquote `>`; a leading `🤖`/emoji or `*`/`_` markdown emphasis; and
@@ -111,13 +120,16 @@ an unambiguous attribution artifact):
 - `claude.ai/code` or `claude.com/claude-code`
 - `🤖 Generated with`
 
-**Why verb + name (precision over recall):** requiring both means a real
-sentence such as "this fixes the Claude SDK timeout" (name present, no
-authoring verb aimed at it) or "generated the config with make" (verb present,
-`make` is not in the name set) is left intact. This is deliberately a
-**whole-line** match — an attribution phrase embedded mid-sentence inside a
-paragraph is NOT stripped. That residual is accepted: it is rare and low-harm,
-and broader matching would risk corrupting legitimate body content.
+**Why footer-zone + verb + name (precision over recall):** the footer-zone
+scope is the primary safeguard — a sentence like "we built a new AI agent
+framework" or "we opened a ticket about the Claude rate limit" sitting in the
+body is never in scope, so it survives even though it co-mentions a verb and a
+name. The verb+name whole-line rule is the secondary filter *inside* the zone.
+Together they keep legitimate prose intact while reliably catching real
+attribution footers (which live in the zone). Accepted residual: an attribution
+phrase a model buries mid-body — outside the footer zone — is not stripped;
+this is rare and low-harm, and the alternative (whole-body keyword
+co-occurrence) corrupts legitimate content.
 
 **After removal:** if stripping leaves a trailing `---` horizontal rule with
 nothing (or only blank lines) after it, drop that orphaned rule; collapse
