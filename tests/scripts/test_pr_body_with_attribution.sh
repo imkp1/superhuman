@@ -87,4 +87,25 @@ printf '%s' "$OUT" | grep -qF 'beta'      || fail "sect: content after --- lost"
 # mid-body '---' plus the footer separator == 2 horizontal rules.
 [ "$(printf '%s' "$OUT" | grep -cE '^-{3,}$')" = "2" ] || fail "sect: mid-body '---' not preserved"
 
+# 9. Footer-zone guard: mid-body prose co-mentioning a verb + tool name is preserved.
+FP='## Summary
+We opened a ticket about the Claude rate limit issue.
+We built a new AI agent framework for customer support.
+
+## Fix
+Adjusted retry backoff.'
+OUT="$(printf '%s' "$FP" | bash "$SCRIPT")"
+printf '%s' "$OUT" | grep -qF 'opened a ticket about the Claude' || fail "fz: mid-body Claude line stripped"
+printf '%s' "$OUT" | grep -qF 'built a new AI agent framework'   || fail "fz: mid-body AI-agent line stripped"
+[ "$(marker_count "$OUT")" = "1" ]                               || fail "fz: marker count != 1"
+
+# 10. Mid-body anthropic email in prose is preserved (only the footer zone is scrubbed).
+FP3='## Summary
+Contact the previous author at noreply@anthropic.com for context.
+
+## Fix
+done.'
+OUT="$(printf '%s' "$FP3" | bash "$SCRIPT")"
+printf '%s' "$OUT" | grep -qF 'noreply@anthropic.com' || fail "fz: mid-body anthropic email stripped"
+
 echo "OK test_pr_body_with_attribution.sh"

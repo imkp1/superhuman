@@ -38,8 +38,20 @@ scrub_attribution() {
   }
   { lines[NR] = $0 }
   END {
+    # Footer zone: attribution is scrubbed only after the last horizontal rule,
+    # else the trailing paragraph, else just the final line — preserving
+    # legitimate mid-body prose that co-mentions a verb and a tool name.
+    lastHR = 0; lastBlank = 0
+    for (i = 1; i <= NR; i++) {
+      s = lines[i]; sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s)
+      if (s ~ /^-{3,}$/) lastHR = i
+      if (lines[i] ~ /^[[:space:]]*$/) lastBlank = i
+    }
+    if (lastHR > 0) zoneStart = lastHR + 1
+    else if (lastBlank > 0) zoneStart = lastBlank + 1
+    else zoneStart = NR
     m = 0
-    for (i = 1; i <= NR; i++) if (!is_attr(lines[i])) { m++; keep[m] = lines[i] }
+    for (i = 1; i <= NR; i++) { if (i >= zoneStart && is_attr(lines[i])) continue; m++; keep[m] = lines[i] }
     # collapse consecutive blank lines
     o = 0; prevblank = 0
     for (i = 1; i <= m; i++) {
