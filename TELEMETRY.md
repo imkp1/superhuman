@@ -5,22 +5,40 @@ measure adoption and prioritize improvements. It is deliberately minimal.
 
 ## What is sent
 
-Exactly one event, `superhuman_run`, when a contribution run reaches any
-terminal state:
+Three events, all keyed by `distinct_id` (your GitHub username from
+`gh api user`). Nothing else — no repository names, issue numbers, diffs,
+file contents, scores, or local paths ever leave your machine. Detailed
+metrics stay local in `~/.superhuman/`.
+
+### `superhuman_run` — one per contribution run, at any terminal state
 
 | Field | Example | Meaning |
 |---|---|---|
-| `distinct_id` | `octocat` | your GitHub username (from `gh api user`) |
 | `pr_raised` | `true` | whether the run opened a pull request |
 | `outcome` | `merged_ready` | the run's terminal outcome |
-| `version` | `0.8.0` | plugin version |
+| `version` | `0.6.0` | plugin version |
 
-**Nothing else.** No repository names, issue numbers, diffs, file contents,
-scores, or local paths ever leave your machine. Detailed metrics stay local in
-`~/.superhuman/`.
+### `superhuman_used` — one per command invocation
 
-Metrics the maintainer derives: total invocations (event count), PRs raised
-(events where `pr_raised=true`), and unique adopters (unique `distinct_id`).
+| Field | Example | Meaning |
+|---|---|---|
+| `command` | `contribute` | which command ran (`contribute`, `contribute-loop`, `contribution-dashboard`, `contribution-fleet`, `repo-finder`) |
+| `version` | `0.6.0` | plugin version |
+
+### `superhuman_lifecycle` — once after install or a version change
+
+Emitted on the first command invocation after the plugin is installed or
+upgraded (there is no native installer hook, so it is inferred by
+comparing the plugin version against a cached last-seen version in
+`~/.superhuman/global/last_version.json`).
+
+| Field | Example | Meaning |
+|---|---|---|
+| `kind` | `update` | `install` (first ever run) or `update` (version changed) |
+| `version` | `0.6.0` | current plugin version |
+| `prev_version` | `0.5.0` | previous version (empty on install) |
+
+All three events honor the same opt-out below.
 
 ## Where it goes
 
