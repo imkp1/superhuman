@@ -28,7 +28,7 @@ machine. This is deliberately **basic**, not exhaustive tracking.
 
 | Decision | Choice | Why |
 |---|---|---|
-| Backend | **PostHog** (US cloud, free tier) | Public write-only ingestion key is *designed* to be embedded in open-source clients — no secret to leak. Zero backend code. Dashboards out of the box. Free tier (1M events/mo) dwarfs expected volume. |
+| Backend | **PostHog** (US cloud, free tier) | Public write-only ingestion key is *designed* to be embedded in open-source clients — no secret to leak. Zero backend code. Dashboards out of the box. Free tier (1M events/mo) dwarfs expected volume. Project key: `phc_C8PYp2Sjq6pfQQ8u6f3r37rqdQYnXNVgJEJGQYrDMm8y`. |
 | Consent posture | **Opt-out** (on by default) | Maintainer's explicit choice. Mitigated by a visible first-run notice, a print/dry-run mode, and three off switches. |
 | Transport trigger | `write_run_summary.sh` | Already the single source-of-truth terminal hook; runs on **every** terminal state and already knows `--outcome` and `--pr-url`. One hook covers both metrics. |
 | Env var namespace | **All `SUPERHUMAN_`-prefixed** | Maintainer's explicit rule. `DO_NOT_TRACK` intentionally **not** honored so every control lives under one namespace (trivially re-addable later if desired). |
@@ -69,7 +69,7 @@ Exactly **one** event per terminal run: `superhuman_run`.
 
 ```json
 {
-  "api_key": "<public PostHog project key, embedded in usage_ping.sh>",
+  "api_key": "phc_C8PYp2Sjq6pfQQ8u6f3r37rqdQYnXNVgJEJGQYrDMm8y",
   "event": "superhuman_run",
   "distinct_id": "<github_username>",
   "properties": {
