@@ -78,6 +78,40 @@ LANG=$(jq -r '.language // "?"' "$PROFILE" 2>/dev/null || echo "?")
 TR=$(jq -r '.test_runner // "?"' "$PROFILE" 2>/dev/null || echo "?")
 ```
 
+### Step 3.5: Learning substrate (rule cards + dossier)
+
+Per-repo view of what the `lesson-distiller` has learned for this repo. Both
+files may be absent on a repo not yet seeded or curated — the `[ -f ]` guards
+leave every count at 0 so the panel renders cleanly with "no rule cards yet".
+
+```bash
+LESSONS="$dir/lessons.jsonl"
+DOSSIER_META="$dir/dossier_meta.json"
+
+# lessons.jsonl is one rule card per line (owner: lesson-distiller).
+L_TOTAL=0; L_ACTIVE=0; L_ENF=0; L_DET=0; L_SEM=0; L_DEMOTED=0
+if [ -f "$LESSONS" ]; then
+  L_TOTAL=$(jq -s 'length' "$LESSONS" 2>/dev/null || echo 0)
+  L_ACTIVE=$(jq -s '[.[]|select(.status=="active")]|length' "$LESSONS" 2>/dev/null || echo 0)
+  L_ENF=$(jq -s '[.[]|select(.status=="active" and (.confidence//0)>=0.75 and (.scope=="repo" or .scope=="global"))]|length' "$LESSONS" 2>/dev/null || echo 0)
+  L_DET=$(jq -s '[.[]|select(.kind=="deterministic")]|length' "$LESSONS" 2>/dev/null || echo 0)
+  L_SEM=$(jq -s '[.[]|select(.kind=="semantic")]|length' "$LESSONS" 2>/dev/null || echo 0)
+  L_DEMOTED=$(jq -s '[.[]|select(.status=="demoted")]|length' "$LESSONS" 2>/dev/null || echo 0)
+fi
+
+DOSSIER_STATE="not seeded"
+if [ -f "$DOSSIER_META" ]; then
+  DH=$(jq -r '.head_sha // "" | .[0:7]' "$DOSSIER_META" 2>/dev/null)
+  DA=$(jq -r '.authored_at // "?"' "$DOSSIER_META" 2>/dev/null)
+  [ -n "$DH" ] && DOSSIER_STATE="seeded @ $DH ($DA)"
+fi
+```
+
+Never call `jq` on a path you have not `[ -f ]`-guarded: a missing file makes
+`jq -s` emit a spurious `0` on stdout AND exit non-zero, so `|| echo 0` would
+double-count. The guard is the missing-file handler; `|| echo 0` only catches a
+malformed file.
+
 ### Step 4: Reputation state (global)
 
 ```bash
@@ -140,6 +174,33 @@ if [ -f "$LOOP_LOG" ]; then
 fi
 ```
 
+### Step 5.7: Learning substrate (global)
+
+Cross-repo view: cards the `lesson-distiller` has promoted, and the regression
+alarm log. `lessons_global.jsonl` holds promoted cards (`global-candidate` =
+advisory, `global` = enforced everywhere); `lesson_regressions.jsonl` logs when
+a known rule was shipped-violated or re-raised by a maintainer. Both may be
+absent.
+
+```bash
+GLESSONS="$GLOBAL_DIR/lessons_global.jsonl"
+G_TOTAL=0; G_CAND=0; G_PROMOTED=0
+if [ -f "$GLESSONS" ]; then
+  G_TOTAL=$(jq -s 'length' "$GLESSONS" 2>/dev/null || echo 0)
+  G_CAND=$(jq -s '[.[]|select(.scope=="global-candidate")]|length' "$GLESSONS" 2>/dev/null || echo 0)
+  G_PROMOTED=$(jq -s '[.[]|select(.scope=="global")]|length' "$GLESSONS" 2>/dev/null || echo 0)
+fi
+
+REGRESS="$GLOBAL_DIR/lesson_regressions.jsonl"
+R_SHIP=0; R_RERAISE=0; R_RECENT=""
+if [ -f "$REGRESS" ]; then
+  R_SHIP=$(jq -s '[.[]|select(.kind=="shipped_violation")]|length' "$REGRESS" 2>/dev/null || echo 0)
+  R_RERAISE=$(jq -s '[.[]|select(.kind=="maintainer_reraise")]|length' "$REGRESS" 2>/dev/null || echo 0)
+  R_RECENT=$(tail -5 "$REGRESS" | jq -r '"\(.kind)\t\(.repo) \(.rule_id)"' 2>/dev/null \
+    | awk -F'\t' '{printf "  %-20s %s\n",$1,$2}')
+fi
+```
+
 ### Step 6: Render
 
 Per-repo block (width cap ≤100 cols):
@@ -152,6 +213,8 @@ PR:    https://github.com/apache/airflow/pull/66010
 Iter:  4 / 6       Last score: 92%
 Plateaued: process, docs
 Language: python   Tests: pytest
+Learning: 12 cards (9 active, 5 enforced) — 4 det / 8 sem, 1 demoted
+Dossier:  seeded @ a1b2c3d (2026-07-05T14:02:00Z)
 
 Score history:
   iter 1: 68%
@@ -160,11 +223,18 @@ Score history:
   iter 4: 92%
 ```
 
+The `Learning`/`Dossier` lines render in every per-repo block (learning
+persists across runs), including the "no active contribution" case below. Show
+`Learning: (no rule cards yet)` when `L_TOTAL` is 0, and `Dossier: not seeded`
+when `dossier_meta.json` is absent.
+
 If no active contribution (lock released, no scores):
 
 ```
 ═══ apache/airflow ═══
 (no active contribution — last run: merged, 4 iters)
+Learning: 12 cards (9 active, 5 enforced) — 4 det / 8 sem, 1 demoted
+Dossier:  seeded @ a1b2c3d (2026-07-05T14:02:00Z)
 ```
 
 Global footer (always printed, even with no per-repo blocks):
@@ -180,6 +250,13 @@ Cooldowns (active):
   merged    apache/airflow #65685   (4 iters)
   merged    django/django #17812    (2 iters)
   abandoned psf/requests #6644      (5 iters)
+
+═══ Learning substrate ═══
+Global cards: 7 (2 candidates, 5 promoted)
+Regressions:  2 shipped-violation, 1 maintainer-reraise
+Recent:
+  shipped_violation    apache/airflow airflow-tests-location
+  maintainer_reraise   django/django  django-newsfragment
 
 ═══ Latest loop: loop-20260520T093000Z ═══
   iter repo                             outcome              pr
@@ -202,8 +279,12 @@ the heading — the user needs to see an empty list is empty, not missing.
 
 - **Read-only.** Never use `Write`, `Edit`, or any append. No `>>` redirects.
 - **Tolerate missing files.** `repo_profile.json`, `repo_blocklist.json`,
-  `repo_cooldown.json`, and `merge_outcomes.jsonl` may all be absent.
-  Render `?`, `—`, or `(none)` rather than erroring.
+  `repo_cooldown.json`, `merge_outcomes.jsonl`, `lessons.jsonl`,
+  `dossier_meta.json`, `lessons_global.jsonl`, and `lesson_regressions.jsonl`
+  may all be absent. Render `?`, `—`, `(none)`, or a zero count rather than
+  erroring. Guard every read with `[ -f ]` BEFORE calling `jq` — a missing file
+  makes `jq -s` print a spurious `0` on stdout and exit non-zero, so an
+  unguarded `jq … || echo 0` double-counts.
 - **Tolerate malformed JSON.** If `jq` fails on a file, print
   `(state file malformed: <path>)` and continue to the next repo.
 - **No external API calls.** Do not call `gh`, `curl`, or any network tool.

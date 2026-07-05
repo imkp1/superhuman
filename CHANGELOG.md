@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - **ENFORCE** — `merge-probability-scorer` runs `check_lessons.sh` on the diff; an unfixed ENFORCED violation caps the merge score at 75% (blocks merge-ready ≥80%) and lists the rule under Blocking Issues. Shipped violations are logged to a cross-repo regression corpus at terminal only.
   - **Graduated cross-repo promotion** — a repo-scoped rule recurring across ≥2 distinct repos becomes a `global-candidate`; ≥3 graduates it to enforced `global` scope.
   - **Scripts** (all unit-tested, bash-3.2-safe): `scripts/lessons/{select_lessons,check_lessons,merge_cards,promote_lessons,decay_lessons,record_regression,set_lesson_status}.sh`; `scripts/profiler/{scan_structure,write_repo_scan,dossier_fresh}.sh`; `scripts/lib/lesson_checks.sh` (fixed check registry + canonical dedupe key).
+  - **Observability** — `/contribution-dashboard` gains a Learning panel: per-repo rule-card counts (total / active / enforced / by kind, plus demoted) and dossier freshness, and a global section with promoted cards (candidate vs. enforced) and the regression alarm log.
 - **New shared-state files** (registered in `agents/SHARED_STATE.md`): `repo_scan.json` (owner repo-profiler); `dossier.md`, `dossier_meta.json`, `lessons.jsonl`, `lessons_global.jsonl`, `lesson_regressions.jsonl` (owner lesson-distiller); `classified_comments.json` (owner resolve-comments — the distiller handoff). Each with a draft 2020-12 schema where applicable.
 
 ### Changed
