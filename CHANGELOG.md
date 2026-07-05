@@ -4,7 +4,9 @@ All notable changes to **superhuman** are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/). The `version` field in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `.codex-plugin/plugin.json` must always match the latest released version here.
 
-## [0.9.0] — 2026-07-05
+## [0.6.0] — 2026-07-05
+
+> First tagged release since `v0.5.1`. The interim `0.7.0` / `0.7.1` / `0.8.0` version bumps were manifest-only and never tagged, so their changes are consolidated into this release.
 
 ### Added
 - **Learning substrate — the system now learns from reviewer feedback instead of repeating it.** A durable, typed knowledge base that outlives a single run and generalizes across repos, closing a Birth → Retrieve → Prevent → Enforce → Curate loop so the same review comments stop recurring across merged PRs.
@@ -16,40 +18,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - **Scripts** (all unit-tested, bash-3.2-safe): `scripts/lessons/{select_lessons,check_lessons,merge_cards,promote_lessons,decay_lessons,record_regression,set_lesson_status}.sh`; `scripts/profiler/{scan_structure,write_repo_scan,dossier_fresh}.sh`; `scripts/lib/lesson_checks.sh` (fixed check registry + canonical dedupe key).
   - **Observability** — `/contribution-dashboard` gains a Learning panel: per-repo rule-card counts (total / active / enforced / by kind, plus demoted) and dossier freshness, and a global section with promoted cards (candidate vs. enforced) and the regression alarm log.
 - **New shared-state files** (registered in `agents/SHARED_STATE.md`): `repo_scan.json` (owner repo-profiler); `dossier.md`, `dossier_meta.json`, `lessons.jsonl`, `lessons_global.jsonl`, `lesson_regressions.jsonl` (owner lesson-distiller); `classified_comments.json` (owner resolve-comments — the distiller handoff). Each with a draft 2020-12 schema where applicable.
+- **PR-origin disclosure.** `scripts/orchestrator/pr_body_with_attribution.sh` assembles the PR body and appends a Superhuman origin-disclosure footer, honoring `SUPERHUMAN_ATTRIBUTION`. Unit-tested by `tests/scripts/test_pr_body_with_attribution.sh`; `agents/opensource-contributor.md` Phase 6 pipes the plan-derived body through it before `gh pr create`.
+- **Codex runtime support.** `.codex-plugin/plugin.json` manifest and `skills/superhuman/SKILL.md` adapter expose the full contribution workflow to Codex, executing the same `agents/`, `scripts/`, `schemas/` contracts inline instead of via subagent dispatch. Includes concrete `superpowers:` fallback procedures, a Codex command-equivalent table in the README, and clone + symlink install instructions.
 
 ### Changed
 - `repo-profiler` now publishes `repo_scan.json` (deterministic structural scan of the worktree) to ground the dossier.
 - `resolve-comments` persists classified, non-suspicious comments to `classified_comments.json` for the distiller.
 - `opensource-contributor` sequences the distiller: `MODE=seed` after profiling (Phase 2.5) and `MODE=curate` post-terminal (Phase 8.5) — both non-fatal.
 - `skills/superhuman/SKILL.md` gained the learning-substrate safety rail for the Codex runtime.
+- **PRs now disclose their Superhuman origin by default** — a one-line footer on the **PR body** (`🤖 Opened with [Superhuman](https://github.com/gaurav0107/superhuman), an open-source contribution agent.`). Set `SUPERHUMAN_ATTRIBUTION=off` (also `false`/`0`/`no`) to suppress it.
+- **Contributor identity is derived from `gh`, not hard-coded** (`agents/builder.md` Step 3, `agents/opensource-contributor.md` Phase 0). Whoever installs the plugin contributes under their own name; falls back to the `ID+login@users.noreply.github.com` privacy address when GitHub hides the email. Both agents guard with `gh auth status` and surface `GH_AUTH_MISSING`.
+- **The single-author commit rule is unchanged and now explicitly commit-scoped.** Commits carry no `Co-Authored-By:` trailers and no AI attribution (pre-push verifier enforces it); the disclosure lives only in the PR body.
+- Plugin description and keywords updated across the three manifests to reflect dual-runtime (Claude Code + Codex) support.
 
 ### Security
 - Reviewer comments feeding the distiller are treated as EXTERNAL_CONTENT; the distiller extracts ONLY into the constrained rule-card schema. A comment attempting a command, URL, or out-of-repo write is classified `suspicious`, logged to `mistakes.md`, and never minted into a card. Enforced rules feed the scorer's judgment only — they can never expand `allowed_commands.json` or drive builder shell. The active↔demoted transition routes exclusively through `set_lesson_status.sh`; `merge_cards.sh` refuses status-flips-via-merge, so a crafted comment cannot flip an enforced rule by re-merging it.
-
-## [0.8.0] — 2026-07-04
-
-### Added
-- `scripts/orchestrator/pr_body_with_attribution.sh` — assembles the PR body and appends a Superhuman origin-disclosure footer, honoring `SUPERHUMAN_ATTRIBUTION`. Unit-tested by `tests/scripts/test_pr_body_with_attribution.sh`. `agents/opensource-contributor.md` Phase 6 pipes the plan-derived body through it before `gh pr create`.
-
-### Changed
-- **PRs now disclose their Superhuman origin by default.** Every pull request the plugin opens appends a one-line footer to the **PR body** — `🤖 Opened with [Superhuman](https://github.com/gaurav0107/superhuman), an open-source contribution agent.` — linking the plugin. Most projects now welcome clearly-disclosed agent-assisted contributions, so transparency is the deliberate default as the plugin goes open-source. Set `SUPERHUMAN_ATTRIBUTION=off` (also `false`/`0`/`no`) to suppress it.
-- **The single-author rule is unchanged and now explicitly commit-scoped.** Commits still carry no `Co-Authored-By:` trailers and no AI attribution, and the pre-push verifier still enforces that (`agents/builder.md` Step 3). The new disclosure lives only in the PR body and never touches your commits.
-
-## [0.7.1] — 2026-07-03
-
-### Changed
-- **Contributor identity is now derived from `gh`, not hard-coded.** The single-author safety rail is unchanged — every commit is still authored by exactly one identity with no co-author trailers or AI attribution — but that identity is now the `gh`-authenticated GitHub user running the plugin (`agents/builder.md` Step 3, `agents/opensource-contributor.md` Phase 0). Anyone who installs the plugin contributes under their own name instead of a hard-coded maintainer. When GitHub hides the account email, the pin falls back to the `ID+login@users.noreply.github.com` privacy address, which still attributes commits on GitHub. Both agents now guard with `gh auth status` and surface `GH_AUTH_MISSING` instead of committing as the wrong person; the post-commit author-verification compares against the derived identity.
-
-## [0.7.0] — 2026-06-28
-
-### Added
-- **Codex runtime support.** New `.codex-plugin/plugin.json` manifest and `skills/superhuman/SKILL.md` adapter expose the full contribution workflow to Codex. Same `agents/`, `scripts/`, `schemas/` contracts; Codex executes them inline instead of via subagent dispatch.
-- **Concrete `superpowers:` fallback procedures** in `skills/superhuman/SKILL.md`. Codex users without the `superpowers` plugin get a 5-section structure for `writing-plans` (Context, Touch list, Implementation steps, Verification, Risks) and a 5-step execution loop for `subagent-driven-development` (read-edit-verify-recover-commit, escalate at 3 failures).
-- **Codex command-equivalent table** in README mapping every Claude Code slash command (`/contribute`, `/contribute-loop`, `/contribution-fleet`, `/contribution-dashboard`, `/repo-finder`) to a Codex prompt. Fleet is flagged unsupported since it requires parallel subagent dispatch Codex does not have.
-- **Concrete Codex install instructions** — clone + symlink into `~/.codex/skills/superhuman` instead of a hand-wave to "your normal Codex plugin workflow."
-
-### Changed
-- Plugin description and keywords updated across `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `.codex-plugin/plugin.json` to reflect dual-runtime support.
 
 ## [0.5.1] — 2026-06-08
 
