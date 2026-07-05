@@ -127,6 +127,10 @@ Eligibility check (keep inline; not a full agent):
    git -C "$WORKDIR" config user.name  "$GH_NAME"
    git -C "$WORKDIR" config user.email "$GH_EMAIL"
    git -C "$WORKDIR" config --unset-all commit.template 2>/dev/null || true
+   # Cache identity for best-effort adoption telemetry (see TELEMETRY.md).
+   mkdir -p "$HOME/.superhuman/global"
+   printf '{"github_username":"%s"}\n' "$GH_USER" \
+     > "$HOME/.superhuman/global/identity.json"
    ```
 
    The builder re-applies this at Step 3 (defense in depth) and verifies
