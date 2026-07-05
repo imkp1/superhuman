@@ -314,6 +314,13 @@ When you change a shared-state file's shape, update both its schema in `schemas/
 
 Issues and pull requests welcome. Start with [CONTRIBUTING.md](./CONTRIBUTING.md) for the repo layout, test conventions, and the agent-prompt / extracted-script split. Notable design decisions are written up under [`docs/`](./docs).
 
+## Telemetry
+
+superhuman sends basic, **opt-out** adoption telemetry (your GitHub username,
+run count, PR count) to the maintainer's PostHog project. No repo, issue, or
+code data is ever sent. Disable with `SUPERHUMAN_TELEMETRY=off` or
+`scripts/lib/telemetry_optout.sh`. Full details: [TELEMETRY.md](./TELEMETRY.md).
+
 ## License
 
 [MIT](./LICENSE) © gaurav0107
