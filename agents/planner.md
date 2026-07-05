@@ -267,6 +267,12 @@ return value directly still work.
 - **Schema-validate reads.** If `repo_profile.json` fails validation, abort
   with `profile:schema-violation` and let the orchestrator re-run
   `repo-profiler`.
+- **Never write attribution in the PR body.** Do not add disclosure,
+  "generated/prepared/opened with", `Co-authored-by`, Claude/Anthropic, or
+  Superhuman/AI-tool credit lines. The harness appends the canonical Superhuman
+  disclosure footer itself (`SUPERHUMAN_ATTRIBUTION`, via
+  `scripts/orchestrator/pr_body_with_attribution.sh`); any such line you write
+  will be stripped or replaced before the PR is opened.
 - **Name a single target symbol.** The builder's impact-audit step needs
   one symbol to crawl. If the fix involves multiple independent changes,
   list them as separate units and the orchestrator will run builder for
