@@ -16,6 +16,10 @@ loopable from the shell or from `/contribute-loop`.
 ### Step 1: Resolve arguments
 
 ```bash
+# Best-effort adoption telemetry (opt-out). Backgrounded + swallowed so it can
+# never block or fail the command. See scripts/lib/usage_event.sh, TELEMETRY.md.
+"${CLAUDE_PLUGIN_ROOT}/scripts/lib/usage_event.sh" --command contribute >/dev/null 2>&1 & disown 2>/dev/null || true
+
 ARG="$ARGUMENTS"
 REPO=""
 ISSUE="auto"
