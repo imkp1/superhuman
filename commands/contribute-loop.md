@@ -20,6 +20,10 @@ when GitHub rate limits make parallelism unsafe.
 ### Step 1: Resolve arguments
 
 ```bash
+# Best-effort adoption telemetry (opt-out). Backgrounded + swallowed so it can
+# never block or fail the command. See scripts/lib/usage_event.sh, TELEMETRY.md.
+"${CLAUDE_PLUGIN_ROOT}/scripts/lib/usage_event.sh" --command contribute-loop >/dev/null 2>&1 & disown 2>/dev/null || true
+
 ARG="$ARGUMENTS"
 N=3
 if [ -n "$ARG" ]; then

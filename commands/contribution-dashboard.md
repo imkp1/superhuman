@@ -20,6 +20,10 @@ is available as `$ARGUMENTS`. If empty, show all repos.
 ### Step 1: Resolve target scope
 
 ```bash
+# Best-effort adoption telemetry (opt-out). Backgrounded + swallowed so it can
+# never block or fail the command. See scripts/lib/usage_event.sh, TELEMETRY.md.
+"${CLAUDE_PLUGIN_ROOT}/scripts/lib/usage_event.sh" --command contribution-dashboard >/dev/null 2>&1 & disown 2>/dev/null || true
+
 ROOT="$HOME/.superhuman/repos"
 GLOBAL_DIR="$HOME/.superhuman/global"
 

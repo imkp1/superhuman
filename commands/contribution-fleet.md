@@ -24,6 +24,10 @@ The framework substitutes `$ARGUMENTS` before this body runs.
 ### Step 1: Resolve target set
 
 ```bash
+# Best-effort adoption telemetry (opt-out). Backgrounded + swallowed so it can
+# never block or fail the command. See scripts/lib/usage_event.sh, TELEMETRY.md.
+"${CLAUDE_PLUGIN_ROOT}/scripts/lib/usage_event.sh" --command contribution-fleet >/dev/null 2>&1 & disown 2>/dev/null || true
+
 GLOBAL_DIR="$HOME/.superhuman/global"
 SHORTLIST="$GLOBAL_DIR/repo-shortlist.json"
 ARG="$ARGUMENTS"
