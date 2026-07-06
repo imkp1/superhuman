@@ -307,6 +307,32 @@ See [SECURITY.md](./SECURITY.md) for the full safety model and how to report a v
 | --- | --- | --- |
 | `SUPERHUMAN_ATTRIBUTION` | `on` | Every PR the plugin opens appends a one-line footer to the **PR body** disclosing it was produced with Superhuman. Set to `off` (also `false`/`0`/`no`, case-insensitive) to suppress it. Commits are never touched either way. |
 
+## FAQ
+
+**What is superhuman?**
+superhuman is an autonomous open-source contribution agent for [Claude Code](https://claude.com/claude-code) and Codex. It's a multi-agent harness that picks an open issue in a repository, writes the fix, scores its own pull request on a 10-dimension merge-probability rubric, and iterates on the weakest dimension until a maintainer would merge it.
+
+**How is it different from Copilot, Cursor, Devin, or a plain coding agent?**
+Most AI coding tools are *open-loop*: they generate a change once and hope it's good. superhuman is *closed-loop*. It grades its own pull request before opening it, spends each iteration fixing the single weakest dimension, re-scores, and stops only when it converges — gradient descent on one objective: *will a maintainer merge this?*
+
+**Does it actually get PRs merged into real projects?**
+Yes. It has authored merged pull requests into `huggingface/transformers`, `apache/airflow`, `google-gemini/gemini-cli`, `ant-design/ant-design`, the `oxc` Rust linter, `pydantic-ai`, `pytorch-lightning`, `tesseract-ocr`, `llama_index`, `mem0`, `langchain4j`, `lima`, `LibreChat`, and `mocha` — across Python, Rust, TypeScript, Kotlin, and C++. See [Proven on](#proven-on).
+
+**Is it safe to let an AI agent open pull requests unattended?**
+That's the whole design constraint. superhuman only runs allowlisted CI commands, pushes with `--force-with-lease` to *your fork* (never upstream, never plain `--force`), halts on any review comment that tries to make it run shell or fetch external URLs (prompt-injection defense), and runs a blast-radius impact-audit before touching any shared function. See [Safety rails](#safety-rails).
+
+**What is a merge-probability score?**
+A self-evaluation from the `merge-probability-scorer` agent — a critic with a 10-dimension weighted rubric (correctness, tests, style, PR format, process compliance, scope, docs, commit hygiene, risk, and historical signal) blended with the outcomes of every past PR. The loop stops at 95% sustained over two consecutive runs.
+
+**Does it work with OpenAI Codex as well as Claude Code?**
+Yes. The same agent contracts, scripts, and schemas run under both. Claude Code loads them as subagents and slash commands; Codex runs them inline via `skills/superhuman/SKILL.md`. See [Supported runtimes](#supported-runtimes).
+
+**How do I install it?**
+For Claude Code: `/plugin marketplace add https://github.com/gaurav0107/superhuman` then `/plugin install superhuman@superhuman`. For Codex: clone the repo and symlink `skills/superhuman` into `~/.codex/skills/`. Full steps in [Claude Code installation](#claude-code-installation) and [Codex installation](#codex-installation).
+
+**Does it learn over time?**
+Yes. Every merged or abandoned PR appends to `~/.superhuman/global/merge_outcomes.jsonl`, which calibrates the scorer's historical-signal dimension, and the `lesson-distiller` mines reviewer feedback into typed rule cards. Each run carries a better prior into the next repo than it had on the last one.
+
 ## Development
 
 The behavioral logic lives in two places: agent prompts (`agents/*.md`) and the shell they call out to (`scripts/`). Everything in `scripts/` is covered by self-contained bash unit tests under `tests/scripts/` — no test runner or framework, just `set -euo pipefail` scripts that exit non-zero on failure.

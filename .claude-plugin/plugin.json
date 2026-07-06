@@ -12,7 +12,19 @@
     "skills",
     "agents",
     "claude-code",
-    "codex"
+    "codex",
+    "ai-agents",
+    "autonomous-agents",
+    "multi-agent",
+    "ai-coding-agent",
+    "coding-agent",
+    "pull-request-automation",
+    "open-source-contribution",
+    "llm",
+    "anthropic",
+    "claude",
+    "agentic-workflow",
+    "self-improving-ai"
   ],
   "requires": {
     "plugins": {

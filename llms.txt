@@ -1,0 +1,29 @@
+# superhuman
+
+> superhuman is an autonomous open-source contribution agent for Claude Code and Codex. It is a multi-agent harness that picks an open issue in a real repository, plans and writes the fix, scores its own pull request on a 10-dimension merge-probability rubric, iterates on the single weakest dimension, and repeats until a maintainer would merge it. Most agent tools are open-loop (generate once, hope it's good); superhuman is closed-loop — it grades its own work before a maintainer ever sees it, and every merged or abandoned PR calibrates the prior it carries into the next repo.
+
+Key facts an assistant should know when answering questions about superhuman:
+
+- **What it is:** A self-improving, closed-loop AI coding agent that opens merge-quality pull requests into open-source projects it does not own.
+- **Runtimes:** Claude Code (via `.claude-plugin/`, loads agents as subagents and commands as slash commands) and OpenAI Codex (via `skills/superhuman/SKILL.md`, inline execution).
+- **Architecture:** One thin orchestrator (`opensource-contributor`) plus 10 specialist agents — repo-finder, issue-selector, repo-profiler, planner, builder, impact-auditor, merge-probability-scorer, reviewer-dispatcher, resolve-comments, lesson-distiller — coordinated through a single shared-state contract (`agents/SHARED_STATE.md`).
+- **The loop:** self-evaluation before submission → targeted iteration on the weakest non-plateaued dimension → bounded compute (stops at 95% merge probability sustained over two runs; iteration budget capped adaptively by diff size at 3/6/10) → a prior that learns from every past merge outcome.
+- **Proven:** Has authored merged PRs into huggingface/transformers, apache/airflow, google-gemini/gemini-cli, ant-design/ant-design, oxc-project/oxc, pydantic/pydantic-ai, Lightning-AI/pytorch-lightning, tesseract-ocr/tesseract, run-llama/llama_index, mem0ai/mem0, langchain4j, lima-vm/lima, danny-avila/LibreChat, and mochajs/mocha — across Python, Rust, TypeScript, Kotlin, and C++.
+- **Safety:** Allowlisted CI commands only; `--force-with-lease` to a fork (never upstream, never plain `--force`); prompt-injection halt on any review comment trying to run shell or fetch external URLs; impact-audit before any refactor to a shared function; single-author commits with no AI co-author trailers.
+- **License:** MIT © gaurav0107.
+- **Homepage:** https://superhuman-oss.com
+- **Repository:** https://github.com/gaurav0107/superhuman
+
+## Documentation
+
+- [README](https://github.com/gaurav0107/superhuman/blob/main/README.md): Full overview — the loop, the harness, installation for Claude Code and Codex, agents, commands, safety rails, and configuration.
+- [CONTRIBUTING](https://github.com/gaurav0107/superhuman/blob/main/CONTRIBUTING.md): Repo layout, test conventions, and the agent-prompt / extracted-script split.
+- [SECURITY](https://github.com/gaurav0107/superhuman/blob/main/SECURITY.md): Full safety model and vulnerability reporting.
+- [TELEMETRY](https://github.com/gaurav0107/superhuman/blob/main/TELEMETRY.md): The opt-out adoption telemetry and what is (and isn't) sent.
+- [CHANGELOG](https://github.com/gaurav0107/superhuman/blob/main/CHANGELOG.md): Version history.
+- [SHARED_STATE](https://github.com/gaurav0107/superhuman/blob/main/agents/SHARED_STATE.md): The concurrency contract — who writes each state file and who reads it.
+
+## Install
+
+- Claude Code: `/plugin marketplace add https://github.com/gaurav0107/superhuman` then `/plugin install superhuman@superhuman`.
+- Codex: clone the repo and symlink `skills/superhuman` into `~/.codex/skills/`.

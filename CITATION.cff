@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: "If you use superhuman, please cite it using these metadata."
+title: "superhuman: an autonomous, closed-loop open-source contribution agent for Claude Code and Codex"
+abstract: >-
+  superhuman is a multi-agent harness that contributes merge-quality pull
+  requests to real open-source projects. It picks an open issue, plans and
+  writes the fix, scores its own pull request on a 10-dimension
+  merge-probability rubric, iterates on the single weakest dimension, and
+  repeats until a maintainer would merge it. Unlike open-loop coding agents
+  that generate once, superhuman is closed-loop: it grades its own work before
+  submission and calibrates a learned prior from every past merge outcome.
+type: software
+authors:
+  - alias: gaurav0107
+    family-names: Dubey
+    given-names: Gaurav
+repository-code: "https://github.com/gaurav0107/superhuman"
+url: "https://superhuman-oss.com"
+license: MIT
+version: 0.6.1
+keywords:
+  - ai-agents
+  - autonomous-agents
+  - multi-agent
+  - ai-coding-agent
+  - pull-request-automation
+  - open-source-contribution
+  - claude-code
+  - codex
+  - llm
+  - self-improving-ai
