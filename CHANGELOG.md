@@ -4,6 +4,18 @@ All notable changes to **superhuman** are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/). The `version` field in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `.codex-plugin/plugin.json` must always match the latest released version here.
 
+## [0.6.1] — 2026-07-06
+
+### Added
+- **Usage & lifecycle telemetry.** Two new opt-out PostHog events extend adoption measurement beyond terminal contribution outcomes, governed by the same single opt-out gate (`SUPERHUMAN_TELEMETRY=off` / `telemetry.json` / `print`):
+  - **`superhuman_used`** — emitted (backgrounded, non-blocking) on every command invocation, carrying `command` and `version`. All five commands (`contribute`, `contribute-loop`, `contribution-dashboard`, `contribution-fleet`, `repo-finder`) are instrumented.
+  - **`superhuman_lifecycle`** — emitted once after install or a version change (`kind` = `install`|`update`, plus `version`, `prev_version`), inferred from a cached `~/.superhuman/global/last_version.json` since Claude Code plugins have no native installer hook.
+  - **`scripts/lib/telemetry_common.sh`** — shared, sourced opt-out/identity/version/send helpers; `usage_ping.sh` refactored to source it (behavior parity), new `usage_event.sh` emits the two events.
+- Payload remains minimal (`distinct_id` = GitHub username only); `TELEMETRY.md` documents all three events.
+
+### Fixed
+- `usage_event.sh` no longer writes the lifecycle cache in `SUPERHUMAN_TELEMETRY=print` (dry-run) mode, so previewing telemetry no longer consumes the one-shot install/update signal.
+
 ## [0.6.0] — 2026-07-05
 
 > First tagged release since `v0.5.1`. The interim `0.7.0` / `0.7.1` / `0.8.0` version bumps were manifest-only and never tagged, so their changes are consolidated into this release.
