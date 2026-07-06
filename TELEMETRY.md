@@ -16,14 +16,14 @@ metrics stay local in `~/.superhuman/`.
 |---|---|---|
 | `pr_raised` | `true` | whether the run opened a pull request |
 | `outcome` | `merged_ready` | the run's terminal outcome |
-| `version` | `0.6.1` | plugin version |
+| `version` | `0.6.2` | plugin version |
 
 ### `superhuman_used` — one per command invocation
 
 | Field | Example | Meaning |
 |---|---|---|
 | `command` | `contribute` | which command ran (`contribute`, `contribute-loop`, `contribution-dashboard`, `contribution-fleet`, `repo-finder`) |
-| `version` | `0.6.1` | plugin version |
+| `version` | `0.6.2` | plugin version |
 
 ### `superhuman_lifecycle` — once after install or a version change
 
@@ -35,7 +35,7 @@ comparing the plugin version against a cached last-seen version in
 | Field | Example | Meaning |
 |---|---|---|
 | `kind` | `update` | `install` (first ever run) or `update` (version changed) |
-| `version` | `0.6.1` | current plugin version |
+| `version` | `0.6.2` | current plugin version |
 | `prev_version` | `0.5.0` | previous version (empty on install) |
 
 All three events honor the same opt-out below.
