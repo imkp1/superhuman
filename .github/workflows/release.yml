@@ -1,0 +1,129 @@
+name: release
+
+# Every push to main cuts a release. Ordinary merges auto-bump the patch version
+# across the three manifests, promote the CHANGELOG's [Unreleased] section, commit
+# the bump back to main, then tag + create the GitHub Release. A merge that already
+# introduced a new version (a manual minor/major bump) is released as-is instead of
+# being patched past.
+#
+# Supersedes release-tag.yml, which only tagged a manually-bumped version.
+#
+# main is a protected branch (required checks + conversation resolution). The
+# default GITHUB_TOKEN cannot push the bump commit past that protection, so the
+# push uses RELEASE_TOKEN — a fine-grained PAT owned by a repo admin (Contents:
+# write). Because branch protection has enforce_admins=false, an admin identity
+# bypasses the required checks. See CONTRIBUTING → Versioning & releases for setup.
+#
+# Loop safety: a PAT push DOES retrigger workflows (unlike GITHUB_TOKEN), so the
+# `if:` guard below is load-bearing — it skips the run whose head commit is our
+# own "chore(release):" bump, preventing an infinite bump loop.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          # PAT so the bump commit can be pushed to protected main; falls back to
+          # the default token when RELEASE_TOKEN is unset (works only while main
+          # is unprotected — otherwise the push step fails loudly).
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Resolve the release version
+        id: ver
+        env:
+          CLAUDE_PLUGIN_ROOT: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          # --current also asserts the three manifests agree; it exits 10 (not a
+          # version) if they drift, failing the release loudly instead of tagging
+          # a mismatch.
+          CUR=$(scripts/release/prepare_release.sh --current)
+          if git rev-parse -q --verify "refs/tags/v$CUR" >/dev/null; then
+            NEW=$(echo "$CUR" | awk -F. '{printf "%d.%d.%d", $1, $2, $3 + 1}')
+            echo "vCUR already released — auto-bumping patch $CUR -> $NEW"
+          else
+            NEW="$CUR"
+            echo "v$CUR not yet tagged — releasing it as-is (manual bump / first release)"
+          fi
+          echo "new=$NEW"  >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
+
+      - name: Apply the version + CHANGELOG, commit if changed
+        id: prep
+        env:
+          CLAUDE_PLUGIN_ROOT: ${{ github.workspace }}
+          # Route step outputs through env, never splice ${{ }} into run: — that
+          # substitutes into the script text before the shell parses it, which is
+          # a code-injection vector (version originates from a manifest field).
+          NEW_VERSION: ${{ steps.ver.outputs.new }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          scripts/release/prepare_release.sh --set "$NEW_VERSION" >/dev/null
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing to commit — manifests and CHANGELOG already at $NEW_VERSION."
+          else
+            git commit -aqm "chore(release): $TAG [skip ci]"
+            # Direct push to main. This requires main to be either unprotected or
+            # to let the github-actions bot bypass protection (Settings → Branches).
+            # If protected without a bypass, this push is rejected and the step
+            # fails loudly — that is intentional, not a silent no-release.
+            git push origin HEAD:main
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract release notes from CHANGELOG
+        env:
+          NEW_VERSION: ${{ steps.ver.outputs.new }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Body of the "## [NEW]" section, up to the next "## [" header.
+          awk -v prefix="## [$NEW_VERSION]" '
+            /^## \[/ { if (started) exit;
+                       if (substr($0, 1, length(prefix)) == prefix) { started=1; next } }
+            started { print }
+          ' CHANGELOG.md > release_notes.md
+          if [ ! -s release_notes.md ]; then
+            printf "Release %s\n" "$TAG" > release_notes.md
+          fi
+
+      - name: Tag and create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "$(git tag --list "$TAG")" ]; then
+            echo "Tag $TAG already exists — nothing to release."
+            exit 0
+          fi
+          # HEAD is the bump commit when one was made, else the merge commit.
+          git tag "$TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" \
+            --target "$(git rev-parse HEAD)" \
+            --title "$TAG" \
+            --notes-file release_notes.md
+          echo "Released $TAG."
