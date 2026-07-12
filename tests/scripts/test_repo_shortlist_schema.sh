@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-export CLAUDE_PLUGIN_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+CLAUDE_PLUGIN_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+export CLAUDE_PLUGIN_ROOT
 source "$CLAUDE_PLUGIN_ROOT/scripts/lib/state.sh"
 SCHEMA="$CLAUDE_PLUGIN_ROOT/schemas/repo_shortlist.schema.json"
 tmpdir=$(mktemp -d)
@@ -61,5 +62,24 @@ case "$RENDERED" in
 esac
 grep -q 'scores\.final' "$CLAUDE_PLUGIN_ROOT/commands/repo-finder.md" || {
   echo "FAIL commands/repo-finder.md does not render .scores.final"; exit 1; }
+
+# Step 1 guards must exist in code, not only in prose. Each of these silently
+# yields a partial candidate set that reads as a clean scan.
+AGENT="$CLAUDE_PLUGIN_ROOT/agents/repo-finder.md"
+grep -q 'FATAL: search failed for query' "$AGENT" || {
+  echo "FAIL Step 1 does not abort on a failed search"; exit 1; }
+grep -q 'any(.full_name == null)' "$AGENT" || {
+  echo "FAIL Step 1 does not abort on null full_name"; exit 1; }
+grep -q 'total_count' "$AGENT" || {
+  echo "FAIL Step 1 does not retain total_count"; exit 1; }
+
+# The query loop must not be fed by a pipe: a piped `while` runs in a subshell,
+# where the aborts above terminate only the subshell and the scan continues.
+grep -q 'DEFAULT_QUERIES" | while' "$AGENT" && {
+  echo "FAIL Step 1 query loop is piped; aborts cannot exit the scan"; exit 1; }
+
+# The per-candidate repo call this agent exists to avoid must stay deleted.
+grep -q 'gh api repos/OWNER/REPO --jq' "$AGENT" && {
+  echo "FAIL Step 2 re-fetches fields already carried by the Step 1 projection"; exit 1; }
 
 echo "OK test_repo_shortlist_schema.sh"

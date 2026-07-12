@@ -65,21 +65,39 @@ topic:developer-tools         stars:>20000 archived:false
 language:java language:python stars:>20000 archived:false
 "
 
-echo "$DEFAULT_QUERIES" | while IFS= read -r q; do
+# Feed the loop by heredoc, not `echo ... | while`. A piped while runs in a
+# subshell, where `exit` terminates only the subshell and the scan continues past
+# a fatal error.
+CANDIDATES=""
+while IFS= read -r q; do
   [ -z "$q" ] && continue
-  gh api -X GET search/repositories \
-    -f q="$q" -f sort=stars -f order=desc -f per_page=50 \
-    --jq '.items[] | {full_name, language, topics, stargazers_count, pushed_at,
-                      archived, open_issues_count, default_branch, description}'
-done
+
+  # An error is not a verdict. A failed search must abort, never contribute zero
+  # rows to a scan that then reads as clean.
+  RESP=$(gh api -X GET search/repositories \
+    -f q="$q" -f sort=stars -f order=desc -f per_page=50) \
+    || { echo "FATAL: search failed for query: $q" >&2; exit 1; }
+
+  # Field-name drift against the API yields null, not an error. Abort; do not skip
+  # the row. A partial candidate set is indistinguishable from a clean scan.
+  if printf '%s' "$RESP" | jq -e '.items | any(.full_name == null)' >/dev/null; then
+    echo "FATAL: null full_name in search response — projection drifted: $q" >&2
+    exit 1
+  fi
+
+  # Report matched-of-total from the same response. Never widen a query to fill
+  # the list.
+  echo "$(printf '%s' "$RESP" | jq -r '.items | length') of \
+$(printf '%s' "$RESP" | jq -r '.total_count') matched: $q" >&2
+
+  CANDIDATES="$CANDIDATES$(printf '%s' "$RESP" | jq -c '.items[] |
+    {full_name, language, topics, stargazers_count, pushed_at,
+     archived, open_issues_count, default_branch, description}')
+"
+done <<EOF
+$DEFAULT_QUERIES
+EOF
 ```
-
-Guard the projection: a candidate row with a null or absent `full_name` is a hard
-abort, not a skipped row. A `jq` field name that drifts from the API yields `null`
-silently, and a partial candidate set reads as a clean scan.
-
-Retain `total_count` per query and report matched-of-total. Never widen a query to
-fill the list.
 
 Deduplicate across all queries. Expect 50-100 unique repos after dedup.
 
