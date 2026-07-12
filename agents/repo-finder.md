@@ -29,35 +29,63 @@ Search in this priority order. Spend more effort on higher-priority categories:
 
 ### Step 1: Build Search Queries
 
-Run GitHub searches across each category. Use `gh` CLI for all API access.
+Use `gh api search/repositories`. Do not use `gh search repos`: it cannot return
+`topics[]`, which the shortlist requires. Every other required field ships inline
+in the same response.
 
-The repo slug field is `fullName`. `gh search repos` rejects `nameWithOwner` with
-`Unknown JSON field` — that field belongs to `gh repo` and the GraphQL schema, not
-to the search command. Passing it fails every query in this step, so the scan ends
-with zero candidates and writes an empty shortlist that reads as a clean run.
+#### Query shape rules
+
+Repeated qualifiers do not behave alike:
+
+| Qualifier | Repeated behavior |
+|---|---|
+| `language:` | OR — `language:go language:rust` returns Go ∪ Rust |
+| `topic:` | AND — `topic:cli topic:terminal` returns only repos tagged both |
+
+- Union languages into a single query. Multi-language costs nothing.
+- **Emit at most one `topic:` per query.** A second `topic:` intersects rather
+  than unions, returning a smaller or empty set with no error.
+- Query count is `|topics|`, not `|langs| × |topics|`.
+- Every `key:` token must be one of `{language, topic, stars, archived}`. An
+  unrecognized qualifier (`langauge:go`) is parsed as free text and returns
+  `total_count: 0` with exit 0.
+- Every query must carry a `language:` or a `topic:`. A query with neither is a
+  catch-all that admits repos matching no criterion.
+- Sort by `stars`, not `updated`. `updated` reorders hourly, making the per-query
+  cutoff non-deterministic.
+- Pass `archived:false` as a qualifier so archived repos never consume a result
+  slot.
 
 ```bash
-# Category 1: AI/ML
-gh search repos --topic machine-learning --stars ">20000" --sort updated --limit 20 --json fullName,stargazersCount,updatedAt,description
-gh search repos --topic llm --stars ">5000" --sort updated --limit 20 --json fullName,stargazersCount,updatedAt,description
-gh search repos --topic artificial-intelligence --stars ">20000" --sort updated --limit 20 --json fullName,stargazersCount,updatedAt,description
+DEFAULT_QUERIES="
+topic:machine-learning        stars:>20000 archived:false
+topic:llm                     stars:>5000  archived:false
+topic:artificial-intelligence stars:>20000 archived:false
+topic:developer-tools         stars:>20000 archived:false
+language:java language:python stars:>20000 archived:false
+"
 
-# Category 2: Language-specific
-gh search repos --language java --stars ">20000" --sort updated --limit 20 --json fullName,stargazersCount,updatedAt,description
-gh search repos --language python --stars ">20000" --sort updated --limit 20 --json fullName,stargazersCount,updatedAt,description
-
-# Category 3: Framework-specific
-gh search repos "spring boot" --stars ">10000" --sort updated --limit 10 --json fullName,stargazersCount,updatedAt,description
-gh search repos "fastapi" --stars ">5000" --sort updated --limit 10 --json fullName,stargazersCount,updatedAt,description
-
-# Category 4: Famous tools
-gh search repos --topic developer-tools --stars ">20000" --sort updated --limit 20 --json fullName,stargazersCount,updatedAt,description
-
-# Category 5: Other active repos (catch-all)
-gh search repos --stars ">20000" --sort updated --limit 20 --json fullName,stargazersCount,updatedAt,description
+echo "$DEFAULT_QUERIES" | while IFS= read -r q; do
+  [ -z "$q" ] && continue
+  gh api -X GET search/repositories \
+    -f q="$q" -f sort=stars -f order=desc -f per_page=50 \
+    --jq '.items[] | {full_name, language, topics, stargazers_count, pushed_at,
+                      archived, open_issues_count, default_branch, description}'
+done
 ```
 
-Deduplicate across all queries. You should have 50-100 unique repos after dedup.
+Guard the projection: a candidate row with a null or absent `full_name` is a hard
+abort, not a skipped row. A `jq` field name that drifts from the API yields `null`
+silently, and a partial candidate set reads as a clean scan.
+
+Retain `total_count` per query and report matched-of-total. Never widen a query to
+fill the list.
+
+Deduplicate across all queries. Expect 50-100 unique repos after dedup.
+
+Carry the full projected record forward. `topics[]` reaches the shortlist row;
+`pushed_at`, `archived`, `open_issues_count`, and `default_branch` are read by
+Step 2 from the record in hand. Step 2 does not re-fetch them.
 
 ### Step 2: Fast Filter (eliminate obvious non-starters)
 
@@ -96,15 +124,25 @@ candidate in the loop below. Skipped repos do not consume API rate limit
 on the rest of this step.
 
 For each repo that passes the reputation gate, run these quick checks.
-Skip repos that fail any:
+`$CANDIDATE` is that repo's projected record from Step 1 — the full JSON object,
+not just the slug. Skip repos that fail any check:
 
 ```bash
-# One repo call, not three.
-read -r PUSHED_AT OPEN_ISSUES ARCHIVED DEFAULT_BRANCH < <(
-  gh api repos/OWNER/REPO --jq '[.pushed_at, .open_issues_count, .archived, .default_branch] | @tsv')
-# Skip if pushed_at older than 30 days, open_issues_count is 0, or archived.
+# Read from the Step 1 record. Do not re-fetch: `gh api repos/OWNER/REPO` here
+# costs one request per candidate, 50-100 per scan, for fields already in hand.
+PUSHED_AT=$(printf '%s' "$CANDIDATE" | jq -r '.pushed_at')
+OPEN_ISSUES=$(printf '%s' "$CANDIDATE" | jq -r '.open_issues_count')
+DEFAULT_BRANCH=$(printf '%s' "$CANDIDATE" | jq -r '.default_branch')
 
-# Skip if no merged PRs in the last 30 days.
+# Skip if pushed_at is older than 30 days, or open_issues_count is 0.
+# No archived check: `archived:false` is a Step 1 qualifier, so archived repos
+# never enter the candidate set.
+# The search index lags the repo endpoint by minutes to hours. That is within
+# tolerance for a 30-day gate. A check needing to-the-minute accuracy must make
+# its own call.
+
+# Skip if no merged PRs in the last 30 days. No search result carries this signal,
+# so it keeps its own call: one per candidate.
 #
 # Ask the search index directly (`merged:>=YYYY-MM-DD`). Do NOT fetch `--state
 # merged --limit N` and filter on mergedAt: that list is ordered by CREATION
@@ -545,11 +583,30 @@ If no issue scores 8+ after applying the hard filter, mark the repo as "no clear
 Save results to `~/.superhuman/global/repo-shortlist.json`
 (create the directory if missing; atomic temp-rename write):
 
+Validate against `schemas/repo_shortlist.schema.json` before the rename. A
+malformed shortlist must never reach the orchestrator.
+
 ```bash
+source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/state.sh"
+
 GLOBAL_DIR="$HOME/.superhuman/global"
 mkdir -p "$GLOBAL_DIR"
 TMP="$GLOBAL_DIR/repo-shortlist.json.tmp.$$"
-printf '%s' "$SHORTLIST" | jq . > "$TMP" && mv "$TMP" "$GLOBAL_DIR/repo-shortlist.json"
+printf '%s' "$SHORTLIST" | jq . > "$TMP" \
+  || { echo "FATAL: shortlist is not valid JSON" >&2; rm -f "$TMP"; exit 1; }
+
+validate_json "${CLAUDE_PLUGIN_ROOT}/schemas/repo_shortlist.schema.json" "$TMP" \
+  || { echo "FATAL: shortlist failed schema validation" >&2; rm -f "$TMP"; exit 1; }
+
+# Row invariant, asserted separately: validate_json degrades to a top-level
+# required-key check when python jsonschema is absent (stock macOS runner), and
+# `repo`/`scores.final` are nested inside repos[]. A null `repo` (dropped
+# full_name -> repo mapping) or null score (written to `.score`) survives that
+# fallback and propagates downstream as a valid-looking value.
+jq -e '.repos | length > 0 and all(.repo != null and .scores.final != null)' "$TMP" >/dev/null \
+  || { echo "FATAL: shortlist row missing repo or scores.final" >&2; rm -f "$TMP"; exit 1; }
+
+mv "$TMP" "$GLOBAL_DIR/repo-shortlist.json"
 ```
 
 The orchestrator binds the top result via:
@@ -558,7 +615,9 @@ The orchestrator binds the top result via:
 REPO=$(jq -r '.repos[0].repo' "$GLOBAL_DIR/repo-shortlist.json")
 ```
 
-Shortlist payload shape:
+Shortlist payload shape. The row key is `repo`, not `full_name`: map Step 1's
+`full_name` across on write, or the orchestrator's `.repos[0].repo` binds null.
+`topics[]` comes from the Step 1 projection; cite it in the `notes` rationale.
 
 ```json
 {
@@ -575,6 +634,7 @@ Shortlist payload shape:
       "stars": 45000,
       "category": "ai-ml",
       "language": "Python",
+      "topics": ["machine-learning", "llm", "python"],
       "description": "repo description",
       "scores": {
         "responsiveness": 9,

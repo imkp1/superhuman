@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gaurav0107/superhuman/schemas/repo_shortlist.schema.json",
+  "title": "repo_shortlist",
+  "description": "Ranked repos worth contributing to, with the single best issue candidate per repo. Consumed by opensource-contributor and the contribute/contribution-fleet commands, which bind a target via .repos[0].repo. Owner (sole writer): repo-finder.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["generated_at", "repos"],
+  "properties": {
+    "generated_at": {"type": "string", "format": "date-time"},
+    "criteria": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "the filter that produced this list, e.g. {\"min_stars\":20000,\"min_score\":60}"
+    },
+    "repos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["repo", "scores"],
+        "properties": {
+          "rank":        {"type": "integer", "minimum": 1},
+          "repo":        {"type": "string", "pattern": "^[^/]+/[^/]+$", "description": "owner/repo slug. Search returns this field as full_name; map it across on write or .repos[0].repo binds null downstream."},
+          "stars":       {"type": "integer", "minimum": 0},
+          "category":    {"type": "string"},
+          "language":    {"type": ["string", "null"], "description": "null for repos GitHub cannot classify"},
+          "topics":      {"type": "array", "items": {"type": "string"}, "description": "from the Step 1 search projection; cited by the notes rationale"},
+          "description": {"type": ["string", "null"]},
+          "scores": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["final"],
+            "description": "commands/repo-finder.md renders scores.final. A score written to a bare .score key renders as null on every row.",
+            "properties": {
+              "responsiveness":            {"type": "number"},
+              "opportunity_quality":       {"type": "number"},
+              "outside_contributor_track": {"type": "number"},
+              "ai_friendliness":           {"type": "number"},
+              "category_bonus":            {"type": "number"},
+              "final":                     {"type": "number"}
+            }
+          },
+          "responsiveness_detail": {"type": "object", "additionalProperties": true},
+          "best_issue": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["number", "url"],
+            "properties": {
+              "number":                  {"type": "integer"},
+              "title":                   {"type": "string"},
+              "type":                    {"type": "string"},
+              "labels":                  {"type": "array", "items": {"type": "string"}},
+              "has_maintainer_approval": {"type": "boolean"},
+              "issue_score":             {"type": "number"},
+              "url":                     {"type": "string"}
+            }
+          },
+          "notes": {"type": "string"}
+        }
+      }
+    }
+  }
+}
