@@ -1,22 +1,49 @@
 #!/usr/bin/env bash
 # reputation_gate.sh --repo OWNER/REPO [--now ISO_TS]
 # Exit 0 = eligible. 1 = blocklisted. 2 = in cooldown. 3 = locked.
-# Replaces three inline duplicates: opensource-contributor.md Phase 0,
-# repo-finder.md, commands/contribution-fleet.md:80-95 (audit §14).
+# Exit 10 = config error, not a verdict. Must stay distinct from 1/2/3: callers
+# drop a repo on any nonzero code, so reusing a verdict code for a config error
+# would drop repos for a reason unrelated to them. Callers abort on 10.
 set -euo pipefail
-: "${CLAUDE_PLUGIN_ROOT:?CLAUDE_PLUGIN_ROOT must be set}"
+
+EX_CONFIG=10
+
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  echo "reputation_gate.sh: CONFIG ERROR: CLAUDE_PLUGIN_ROOT is unset." >&2
+  echo "  This is NOT a verdict about the repo. Export it and re-run." >&2
+  exit "$EX_CONFIG"
+fi
+if [ ! -r "${CLAUDE_PLUGIN_ROOT}/scripts/lib/state.sh" ]; then
+  echo "reputation_gate.sh: CONFIG ERROR: cannot read" \
+       "${CLAUDE_PLUGIN_ROOT}/scripts/lib/state.sh" >&2
+  exit "$EX_CONFIG"
+fi
+# shellcheck source=/dev/null
 source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/state.sh"
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "reputation_gate.sh: CONFIG ERROR: jq not found on PATH." >&2
+  exit "$EX_CONFIG"
+fi
 
 REPO=""
 NOW=""
+# Check arity before touching $2: under `set -u` a flag with no value dies on
+# the unbound $2 and exits 1, i.e. the "blocklisted" verdict.
+need_value() {
+  [ "$2" -ge 2 ] && return 0
+  echo "reputation_gate.sh: CONFIG ERROR: $1 requires a value" >&2
+  exit "$EX_CONFIG"
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --repo) REPO="$2"; shift 2 ;;
-    --now)  NOW="$2";  shift 2 ;;
-    *) echo "reputation_gate.sh: unknown arg: $1" >&2; exit 2 ;;
+    --repo) need_value --repo "$#"; REPO="$2"; shift 2 ;;
+    --now)  need_value --now  "$#"; NOW="$2";  shift 2 ;;
+    *) echo "reputation_gate.sh: CONFIG ERROR: unknown arg: $1" >&2; exit "$EX_CONFIG" ;;
   esac
 done
-[ -z "$REPO" ] && { echo "--repo required" >&2; exit 2; }
+[ -z "$REPO" ] && { echo "reputation_gate.sh: CONFIG ERROR: --repo required" >&2; exit "$EX_CONFIG"; }
 [ -z "$NOW" ]  && NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 GD=$(global_dir)

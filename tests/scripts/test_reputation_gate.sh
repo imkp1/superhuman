@@ -38,4 +38,39 @@ rc=$?
 set -e
 [ "$rc" = "3" ] || { echo "FAIL lock rc: $rc"; exit 1; }
 
+# Config error: CLAUDE_PLUGIN_ROOT unset. Must NOT reuse 1 (blocklisted) or
+# 2 (cooldown) — callers drop a repo on any nonzero code, so a config error
+# wearing a verdict's exit code silently drops every candidate and the scan
+# ends with an empty shortlist that looks like a legitimate clean run.
+GATE="$CLAUDE_PLUGIN_ROOT/scripts/orchestrator/reputation_gate.sh"
+set +e
+( unset CLAUDE_PLUGIN_ROOT; HOME="$tmpdir" bash "$GATE" --repo any/repo --now "$NOW" ) >/dev/null 2>&1
+rc=$?
+set -e
+[ "$rc" = "10" ] || { echo "FAIL unset CLAUDE_PLUGIN_ROOT rc: $rc (want 10)"; exit 1; }
+
+# Config error: bad usage. Same rule — must not collide with a verdict code.
+set +e
+HOME="$tmpdir" bash "$GATE" --bogus-flag x >/dev/null 2>&1
+rc=$?
+set -e
+[ "$rc" = "10" ] || { echo "FAIL unknown arg rc: $rc (want 10)"; exit 1; }
+
+set +e
+HOME="$tmpdir" bash "$GATE" --now "$NOW" >/dev/null 2>&1
+rc=$?
+set -e
+[ "$rc" = "10" ] || { echo "FAIL missing --repo rc: $rc (want 10)"; exit 1; }
+
+# Config error: flag given with no value. Under `set -u` the unbound $2 kills
+# the script with exit 1 — the "blocklisted" verdict — unless arity is checked
+# before $2 is read.
+for flag in --repo --now; do
+  set +e
+  HOME="$tmpdir" bash "$GATE" "$flag" >/dev/null 2>&1
+  rc=$?
+  set -e
+  [ "$rc" = "10" ] || { echo "FAIL $flag with no value rc: $rc (want 10)"; exit 1; }
+done
+
 echo "OK test_reputation_gate.sh"
