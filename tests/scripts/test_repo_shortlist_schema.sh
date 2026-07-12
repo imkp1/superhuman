@@ -74,7 +74,10 @@ STEP1=$(awk '
   inb         {buf = buf $0 "\n"}
 ' "$AGENT")
 [ -n "$STEP1" ] || { echo "FAIL could not extract the Step 1 query block"; exit 1; }
-printf '%s' "$STEP1" > "$tmpdir/step1.sh"
+# Trailing newline is load-bearing: the block ends in a heredoc terminator, and
+# command substitution strips it. Without it, anything appended below fuses onto
+# the EOF line and the heredoc never closes.
+printf '%s\n' "$STEP1" > "$tmpdir/step1.sh"
 bash -n "$tmpdir/step1.sh" || { echo "FAIL Step 1 block is not valid bash"; exit 1; }
 
 mkdir -p "$tmpdir/bin"
@@ -88,9 +91,13 @@ esac
 EOF
 chmod +x "$tmpdir/bin/gh"
 
+# Step 1 accumulates rows into $CANDIDATES without printing them, so append a dump
+# to observe what the loop actually collected. An abort exits before reaching it.
+{ cat "$tmpdir/step1.sh"; echo 'printf "%s" "$CANDIDATES"'; } > "$tmpdir/run.sh"
+
 run_step1() {  # run_step1 <mode> -> Step 1's exit code; stdout/stderr in $tmpdir/out
   GH_STUB_MODE="$1" PATH="$tmpdir/bin:$PATH" \
-    bash "$tmpdir/step1.sh" > "$tmpdir/out" 2>&1
+    bash "$tmpdir/run.sh" > "$tmpdir/out" 2>&1
 }
 
 # A failed search must abort the scan. Contributing zero rows instead leaves a
@@ -102,9 +109,15 @@ grep -q 'FATAL' "$tmpdir/out" || { echo "FAIL failed search did not report FATAL
 run_step1 null && { echo "FAIL Step 1 did not abort on null full_name"; exit 1; }
 grep -q 'FATAL' "$tmpdir/out" || { echo "FAIL null full_name did not report FATAL"; exit 1; }
 
-# Happy path: still returns rows, and reports matched-of-total from the response.
+# Happy path: the projected row must actually be collected. Asserting only on the
+# matched-of-total line is satisfied by "0 of 63 matched", so a regression that
+# drops every candidate would pass.
 run_step1 ok || { echo "FAIL Step 1 aborted on a valid response"; exit 1; }
-grep -q 'of 63 matched' "$tmpdir/out" || {
+grep -q '"full_name":"owner/repo"' "$tmpdir/out" || {
+  echo "FAIL Step 1 collected no candidate row"; cat "$tmpdir/out"; exit 1; }
+grep -q '"default_branch":"main"' "$tmpdir/out" || {
+  echo "FAIL Step 1 projection dropped default_branch (raw() breaks without it)"; exit 1; }
+grep -q '1 of 63 matched' "$tmpdir/out" || {
   echo "FAIL Step 1 does not report matched-of-total"; cat "$tmpdir/out"; exit 1; }
 
 # Both aborts above only terminate the scan if the loop runs in the current shell.
@@ -117,13 +130,31 @@ printf '%s' "$STEP1_CODE" | grep -qE '\|[[:space:]]*while' && {
 printf '%s' "$STEP1_CODE" | grep -q 'done <<' || {
   echo "FAIL Step 1 query loop is not heredoc-fed"; exit 1; }
 
-# The per-candidate repo call must stay deleted. Matched on the resurrection
-# signature — a repos/ call carrying the fields Step 1 already projects — not on
-# `gh api repos/` wholesale: the workflow-tree, contributors, comments, and pulls
-# calls are legitimate and must keep working.
-sed 's/#.*//' "$AGENT" \
-  | grep -E 'gh api .*repos/' \
-  | grep -qE 'pushed_at|open_issues_count|default_branch' && {
-    echo "FAIL Step 2 re-fetches fields already carried by the Step 1 projection"; exit 1; }
+# The per-candidate repo call must stay deleted. Match the ROOT repos/OWNER/REPO
+# endpoint, not the field names: `gh api "repos/$name"` returns all four projected
+# fields whether or not a field name appears on that line, and a line-continued
+# command hides the field list from a line-oriented grep entirely.
+#
+# Subresources are legitimate and must keep working: /git/trees, /contributors,
+# /issues/comments, /pulls carry data no search result holds. Banning `gh api
+# repos/` wholesale, as review proposed, would break all four.
+#
+# Normalize first: strip comments, join line continuations, collapse whitespace.
+NORM=$(sed 's/#.*//' "$AGENT" \
+  | sed -e :a -e '/\\$/{N; s/\\\n//; ta' -e '}' \
+  | tr -s '[:space:]' ' ')
+#
+# Allowlist the subresources rather than pattern-matching the root form: the owner
+# and repo may be a variable (`gh api "repos/$full_name"`), which carries no
+# literal owner/repo slash to match on. Anything without a subresource is a root
+# fetch, however it is spelled.
+REFETCH=$(printf '%s\n' "$NORM" \
+  | grep -oE "gh api [^|;]*repos/[^\"' )]*" \
+  | grep -oE "repos/[^\"' )]*" \
+  | grep -vE "/(git/trees|contributors|issues|pulls|commits|compare|releases|contents|labels)" \
+  || true)
+[ -z "$REFETCH" ] || {
+  echo "FAIL Step 2 re-fetches the root repos endpoint ($REFETCH); Step 1 already carries those fields"
+  exit 1; }
 
 echo "OK test_repo_shortlist_schema.sh"
