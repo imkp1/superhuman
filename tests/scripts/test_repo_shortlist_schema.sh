@@ -63,23 +63,67 @@ esac
 grep -q 'scores\.final' "$CLAUDE_PLUGIN_ROOT/commands/repo-finder.md" || {
   echo "FAIL commands/repo-finder.md does not render .scores.final"; exit 1; }
 
-# Step 1 guards must exist in code, not only in prose. Each of these silently
-# yields a partial candidate set that reads as a clean scan.
 AGENT="$CLAUDE_PLUGIN_ROOT/agents/repo-finder.md"
-grep -q 'FATAL: search failed for query' "$AGENT" || {
-  echo "FAIL Step 1 does not abort on a failed search"; exit 1; }
-grep -q 'any(.full_name == null)' "$AGENT" || {
-  echo "FAIL Step 1 does not abort on null full_name"; exit 1; }
-grep -q 'total_count' "$AGENT" || {
-  echo "FAIL Step 1 does not retain total_count"; exit 1; }
 
-# The query loop must not be fed by a pipe: a piped `while` runs in a subshell,
-# where the aborts above terminate only the subshell and the scan continues.
-grep -q 'DEFAULT_QUERIES" | while' "$AGENT" && {
-  echo "FAIL Step 1 query loop is piped; aborts cannot exit the scan"; exit 1; }
+# Step 1's guards are executed, not grepped: a literal-text assertion is satisfied
+# by prose or a comment and proves nothing about behavior. Extract the Step 1
+# block and run it against a stubbed gh. No network.
+STEP1=$(awk '
+  /^```bash$/ {inb=1; buf=""; next}
+  /^```$/     {if (inb && buf ~ /DEFAULT_QUERIES=/) {printf "%s", buf; exit} inb=0; buf=""; next}
+  inb         {buf = buf $0 "\n"}
+' "$AGENT")
+[ -n "$STEP1" ] || { echo "FAIL could not extract the Step 1 query block"; exit 1; }
+printf '%s' "$STEP1" > "$tmpdir/step1.sh"
+bash -n "$tmpdir/step1.sh" || { echo "FAIL Step 1 block is not valid bash"; exit 1; }
 
-# The per-candidate repo call this agent exists to avoid must stay deleted.
-grep -q 'gh api repos/OWNER/REPO --jq' "$AGENT" && {
-  echo "FAIL Step 2 re-fetches fields already carried by the Step 1 projection"; exit 1; }
+mkdir -p "$tmpdir/bin"
+cat > "$tmpdir/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+case "${GH_STUB_MODE:-ok}" in
+  fail) echo "gh: HTTP 403 rate limit exceeded" >&2; exit 1 ;;
+  null) echo '{"total_count":2,"items":[{"full_name":null,"language":"Go"}]}' ;;
+  *)    echo '{"total_count":63,"items":[{"full_name":"owner/repo","language":"Go","topics":["cli"],"stargazers_count":1,"pushed_at":"2026-07-01T00:00:00Z","archived":false,"open_issues_count":3,"default_branch":"main","description":"d"}]}' ;;
+esac
+EOF
+chmod +x "$tmpdir/bin/gh"
+
+run_step1() {  # run_step1 <mode> -> Step 1's exit code; stdout/stderr in $tmpdir/out
+  GH_STUB_MODE="$1" PATH="$tmpdir/bin:$PATH" \
+    bash "$tmpdir/step1.sh" > "$tmpdir/out" 2>&1
+}
+
+# A failed search must abort the scan. Contributing zero rows instead leaves a
+# partial candidate set that reads as a clean run.
+run_step1 fail && { echo "FAIL Step 1 did not abort on a failed search"; exit 1; }
+grep -q 'FATAL' "$tmpdir/out" || { echo "FAIL failed search did not report FATAL"; exit 1; }
+
+# Field-name drift against the API yields null, not an error.
+run_step1 null && { echo "FAIL Step 1 did not abort on null full_name"; exit 1; }
+grep -q 'FATAL' "$tmpdir/out" || { echo "FAIL null full_name did not report FATAL"; exit 1; }
+
+# Happy path: still returns rows, and reports matched-of-total from the response.
+run_step1 ok || { echo "FAIL Step 1 aborted on a valid response"; exit 1; }
+grep -q 'of 63 matched' "$tmpdir/out" || {
+  echo "FAIL Step 1 does not report matched-of-total"; cat "$tmpdir/out"; exit 1; }
+
+# Both aborts above only terminate the scan if the loop runs in the current shell.
+# A piped `while` runs in a subshell, where `exit` kills the subshell and the scan
+# continues — the guards would pass review and do nothing. Checked on code with
+# comments stripped, so a comment cannot satisfy or trip it.
+STEP1_CODE=$(printf '%s' "$STEP1" | sed 's/#.*//')
+printf '%s' "$STEP1_CODE" | grep -qE '\|[[:space:]]*while' && {
+  echo "FAIL Step 1 query loop is piped; its aborts cannot exit the scan"; exit 1; }
+printf '%s' "$STEP1_CODE" | grep -q 'done <<' || {
+  echo "FAIL Step 1 query loop is not heredoc-fed"; exit 1; }
+
+# The per-candidate repo call must stay deleted. Matched on the resurrection
+# signature — a repos/ call carrying the fields Step 1 already projects — not on
+# `gh api repos/` wholesale: the workflow-tree, contributors, comments, and pulls
+# calls are legitimate and must keep working.
+sed 's/#.*//' "$AGENT" \
+  | grep -E 'gh api .*repos/' \
+  | grep -qE 'pushed_at|open_issues_count|default_branch' && {
+    echo "FAIL Step 2 re-fetches fields already carried by the Step 1 projection"; exit 1; }
 
 echo "OK test_repo_shortlist_schema.sh"
