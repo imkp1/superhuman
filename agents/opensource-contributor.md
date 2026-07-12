@@ -82,15 +82,25 @@ Eligibility check (keep inline; not a full agent):
    outcomes, burns goodwill we cannot replace.
 
    ```bash
+   GATE_RC=0
    "${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator/reputation_gate.sh" \
-     --repo "$OWNER_REPO"
-   case $? in
+     --repo "$OWNER_REPO" || GATE_RC=$?
+   case "$GATE_RC" in
      0) ;;                               # eligible — proceed
      1) exit 1 ;;                        # blocklisted (reason printed)
      2) exit 1 ;;                        # cooldown (until printed)
      3) exit 1 ;;                        # active lock by another run
+     10)                                 # config error — gate never ran
+       echo "FATAL: reputation gate misconfigured; eligibility unverified." >&2
+       exit 10 ;;
+     *)                                  # unknown code — never assume eligible
+       echo "FATAL: reputation gate returned unexpected code $GATE_RC." >&2
+       exit 1 ;;
    esac
    ```
+
+   Keep the `10)` and `*)` branches — without them an unmatched code falls
+   through the `case` and the run proceeds as if the gate had passed.
 
    Audit §14: the same gate is invoked from `repo-finder` and the
    `/contribution-fleet` command. One canonical implementation; behavioral
