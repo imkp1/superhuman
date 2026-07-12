@@ -67,9 +67,26 @@ awk '/^## \[0\.6\.3\]/{s=1;next} /^## \[/{s=0} s && /shiny new thing/{found=1} E
 run --set 0.6.3 --date 2026-07-13 >/dev/null
 [ "$(grep -cE '^## \[0\.6\.3\]' "$tmpdir/CHANGELOG.md")" = "1" ] || { echo "FAIL changelog: 0.6.3 section duplicated"; exit 1; }
 
-# --- --set: rejects a non-semver value ---------------------------------------
-set +e; run --set 1.2 >/dev/null 2>&1; rc=$?; set -e
-[ "$rc" = "10" ] || { echo "FAIL --set bad semver: want rc 10, got $rc"; exit 1; }
+# --- --set: rejects non-semver values (anchored, not a loose glob) -----------
+# The glob [0-9]*.[0-9]*.[0-9]* accepted these; the workflow splices the value
+# into shell/awk, so each is a would-be injection or malformed release.
+for bad in "1.2" "1.2.3.4" "1.2.3-rc1" "1.2.3-beta" "1.2.3abc" "v1.2.3" "1.2.3; touch $tmpdir/pwned" "1.2.3
+4.5.6"; do
+  set +e; run --set "$bad" >/dev/null 2>&1; rc=$?; set -e
+  [ "$rc" = "10" ] || { echo "FAIL --set rejects '$bad': want rc 10, got $rc"; exit 1; }
+done
+[ ! -e "$tmpdir/pwned" ] || { echo "FAIL --set metacharacter value had a side effect"; exit 1; }
+
+# --- --current: agreeing but non-semver manifests are a config error ----------
+fixture 0.6.2
+for f in .claude-plugin/plugin.json .codex-plugin/plugin.json; do
+  jq '.version = "1.2.3-beta"' "$tmpdir/$f" > "$tmpdir/x" && mv "$tmpdir/x" "$tmpdir/$f"
+done
+jq '.plugins[0].version = "1.2.3-beta"' "$tmpdir/.claude-plugin/marketplace.json" > "$tmpdir/x" \
+  && mv "$tmpdir/x" "$tmpdir/.claude-plugin/marketplace.json"
+set +e; run --current >/dev/null 2>&1; rc=$?; set -e
+[ "$rc" = "10" ] || { echo "FAIL --current non-semver: want rc 10, got $rc"; exit 1; }
+fixture 0.6.2
 
 # --- usage errors are exit 10 ------------------------------------------------
 for args in "" "--bogus" "--set"; do

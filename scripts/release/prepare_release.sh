@@ -23,6 +23,11 @@ CHANGELOG="$ROOT/CHANGELOG.md"
 
 command -v jq >/dev/null 2>&1 || die "jq is required"
 
+# Strict, anchored X.Y.Z. A glob like [0-9]*.[0-9]*.[0-9]* is not enough — it
+# accepts "1.2.3-beta", "1.2.3abc", and "1.2.3; rm -rf". The workflow splices this
+# value into shell/awk, so a loose check is a code-injection surface.
+is_semver() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
+
 read_current() { # echoes "plugin marketplace codex" versions
   [ -r "$PLUGIN" ] || die "cannot read $PLUGIN"
   [ -r "$MARKET" ] || die "cannot read $MARKET"
@@ -40,6 +45,7 @@ current() {
   read -r p m c <<<"$(read_current)"
   [ "$p" = "$m" ] && [ "$p" = "$c" ] \
     || die "manifests disagree: plugin=$p marketplace=$m codex=$c"
+  is_semver "$p" || die "manifest version is not a valid X.Y.Z semver: $p"
   printf '%s\n' "$p"
 }
 
@@ -74,10 +80,7 @@ promote_changelog() {
 
 set_version() {
   local v="$1" d="$2"
-  case "$v" in
-    [0-9]*.[0-9]*.[0-9]*) ;;
-    *) die "--set expects a semver X.Y.Z, got: $v" ;;
-  esac
+  is_semver "$v" || die "--set expects a semver X.Y.Z, got: $v"
   write_version "$PLUGIN" '.version = $v'            "$v"
   write_version "$MARKET" '.plugins[0].version = $v' "$v"
   write_version "$CODEX"  '.version = $v'            "$v"

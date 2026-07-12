@@ -62,29 +62,41 @@ jobs:
         id: prep
         env:
           CLAUDE_PLUGIN_ROOT: ${{ github.workspace }}
+          # Route step outputs through env, never splice ${{ }} into run: — that
+          # substitutes into the script text before the shell parses it, which is
+          # a code-injection vector (version originates from a manifest field).
+          NEW_VERSION: ${{ steps.ver.outputs.new }}
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
           set -euo pipefail
-          scripts/release/prepare_release.sh --set "${{ steps.ver.outputs.new }}" >/dev/null
+          scripts/release/prepare_release.sh --set "$NEW_VERSION" >/dev/null
           if git diff --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Nothing to commit — manifests and CHANGELOG already at ${{ steps.ver.outputs.new }}."
+            echo "Nothing to commit — manifests and CHANGELOG already at $NEW_VERSION."
           else
-            git commit -aqm "chore(release): ${{ steps.ver.outputs.tag }} [skip ci]"
+            git commit -aqm "chore(release): $TAG [skip ci]"
+            # Direct push to main. This requires main to be either unprotected or
+            # to let the github-actions bot bypass protection (Settings → Branches).
+            # If protected without a bypass, this push is rejected and the step
+            # fails loudly — that is intentional, not a silent no-release.
             git push origin HEAD:main
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Extract release notes from CHANGELOG
+        env:
+          NEW_VERSION: ${{ steps.ver.outputs.new }}
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
           set -euo pipefail
           # Body of the "## [NEW]" section, up to the next "## [" header.
-          awk -v prefix="## [${{ steps.ver.outputs.new }}]" '
+          awk -v prefix="## [$NEW_VERSION]" '
             /^## \[/ { if (started) exit;
                        if (substr($0, 1, length(prefix)) == prefix) { started=1; next } }
             started { print }
           ' CHANGELOG.md > release_notes.md
           if [ ! -s release_notes.md ]; then
-            printf "Release %s\n" "${{ steps.ver.outputs.tag }}" > release_notes.md
+            printf "Release %s\n" "$TAG" > release_notes.md
           fi
 
       - name: Tag and create the GitHub Release
