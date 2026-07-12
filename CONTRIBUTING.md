@@ -77,10 +77,16 @@ Versions follow [semver](https://semver.org/). The three manifests — `.claude-
 
 **Releases are automatic.** Every push to `main` runs [`.github/workflows/release.yml`](./.github/workflows/release.yml):
 
-- If the current version is already tagged (the normal case for a merge), it **bumps the patch** across all three manifests, promotes the `## [Unreleased]` CHANGELOG section into a dated `## [X.Y.Z]` section, commits that back to `main` (`chore(release): vX.Y.Z`), then tags and publishes the GitHub Release. The bump commit is pushed with `GITHUB_TOKEN`, so it does not retrigger the workflow.
+- If the current version is already tagged (the normal case for a merge), it **bumps the patch** across all three manifests, promotes the `## [Unreleased]` CHANGELOG section into a dated `## [X.Y.Z]` section, commits that back to `main` (`chore(release): vX.Y.Z`), then tags and publishes the GitHub Release.
 - If the merge already introduced a new version (you bumped the manifests for a **minor/major**), it releases that version **as-is** instead of patching past it.
 
 So: put your notes under `## [Unreleased]` and they become the next release's notes. The version-writing and CHANGELOG promotion live in [`scripts/release/prepare_release.sh`](./scripts/release/prepare_release.sh) (tested by `tests/scripts/test_prepare_release.sh`); the workflow only decides the target version and does the git/tag/release plumbing.
+
+### Branch protection & the release token
+
+`main` is protected: PRs merge only when the `suite (ubuntu-latest)` / `suite (macos-latest)` checks pass **and** every review conversation (CodeRabbit included) is resolved. A failing check or an unresolved review comment blocks the merge.
+
+Because protection also blocks the release bot's push, the release workflow authenticates its bump-commit push with a **`RELEASE_TOKEN`** secret — a fine-grained PAT owned by a repo admin, scoped `Contents: write`. Protection is set with `enforce_admins=false`, so an admin token bypasses the required checks for that one automated push. Without the secret the release step fails loudly rather than silently skipping a release. (Pushes made by a PAT re-trigger workflows, so the `chore(release):` commit is filtered by the `if:` guard in `release.yml` to avoid a bump loop.)
 
 ## Reporting bugs & requesting features
 

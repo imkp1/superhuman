@@ -8,9 +8,15 @@ name: release
 #
 # Supersedes release-tag.yml, which only tagged a manually-bumped version.
 #
-# Loop safety: the bump is committed with the default GITHUB_TOKEN, and pushes made
-# with that token do NOT trigger new workflow runs. The `if:` guard below is a
-# second belt for the case someone swaps in a PAT/app token.
+# main is a protected branch (required checks + conversation resolution). The
+# default GITHUB_TOKEN cannot push the bump commit past that protection, so the
+# push uses RELEASE_TOKEN — a fine-grained PAT owned by a repo admin (Contents:
+# write). Because branch protection has enforce_admins=false, an admin identity
+# bypasses the required checks. See CONTRIBUTING → Versioning & releases for setup.
+#
+# Loop safety: a PAT push DOES retrigger workflows (unlike GITHUB_TOKEN), so the
+# `if:` guard below is load-bearing — it skips the run whose head commit is our
+# own "chore(release):" bump, preventing an infinite bump loop.
 
 on:
   push:
@@ -32,6 +38,10 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          # PAT so the bump commit can be pushed to protected main; falls back to
+          # the default token when RELEASE_TOKEN is unset (works only while main
+          # is unprotected — otherwise the push step fails loudly).
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
 
       - name: Configure git identity
         run: |
