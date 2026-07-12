@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.3] — 2026-07-12
+
 ### Added
 - **Automated patch releases on merge (`.github/workflows/release.yml`).** Every push to `main` now cuts a release: an ordinary merge auto-bumps the patch version across all three manifests, promotes the `## [Unreleased]` CHANGELOG section into a dated section, commits the bump back to `main`, then tags and publishes the GitHub Release. A merge that already carries a new version (a manual minor/major bump) is released as-is instead of being patched past. The version-writing + CHANGELOG promotion is extracted to `scripts/release/prepare_release.sh` (covered by `tests/scripts/test_prepare_release.sh`), with strict `^X.Y.Z$` validation so a malformed manifest version can't reach the workflow. Replaces `release-tag.yml`, which only tagged manual bumps.
 - **Merge gating on `main`.** Branch protection now requires the `suite` CI checks to pass and all review conversations (CodeRabbit) to be resolved before a PR can merge — a failing check or an unresolved review comment blocks the merge. The release bot pushes its bump commit with a `RELEASE_TOKEN` admin PAT to get past protection (`enforce_admins=false`); see CONTRIBUTING → Versioning & releases.
