@@ -68,12 +68,19 @@ bash tests/scripts/test_state.sh
 - [ ] New/changed scripts have tests.
 - [ ] Changed shared-state shapes update schema **and** test fixture together.
 - [ ] No safety rail weakened without explicit justification in the PR body.
-- [ ] If behavior changed meaningfully, `version` is bumped in **all three** manifests — `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `.codex-plugin/plugin.json` (they must match — they've drifted before), and `CHANGELOG.md` has an entry.
+- [ ] Add your notes under `## [Unreleased]` in `CHANGELOG.md`. A **patch** release is cut automatically when your PR merges (see Versioning & releases) — you do **not** need to bump the manifests for a patch. For a **minor/major** release, bump `version` yourself in **all three** manifests (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json` — they must match) and the merge releases that version as-is.
 - [ ] Notable design decisions captured under `docs/` when warranted.
 
 ## Versioning & releases
 
-Versions follow [semver](https://semver.org/). The three manifests — `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `.codex-plugin/plugin.json` — **must carry the same version**; a mismatch is a release bug (it happened in v0.4.1→v0.5.0). Add a dated, summarised entry to [CHANGELOG.md](./CHANGELOG.md) for every release.
+Versions follow [semver](https://semver.org/). The three manifests — `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `.codex-plugin/plugin.json` — **must carry the same version**; a mismatch is a release bug (it happened in v0.4.1→v0.5.0).
+
+**Releases are automatic.** Every push to `main` runs [`.github/workflows/release.yml`](./.github/workflows/release.yml):
+
+- If the current version is already tagged (the normal case for a merge), it **bumps the patch** across all three manifests, promotes the `## [Unreleased]` CHANGELOG section into a dated `## [X.Y.Z]` section, commits that back to `main` (`chore(release): vX.Y.Z`), then tags and publishes the GitHub Release. The bump commit is pushed with `GITHUB_TOKEN`, so it does not retrigger the workflow.
+- If the merge already introduced a new version (you bumped the manifests for a **minor/major**), it releases that version **as-is** instead of patching past it.
+
+So: put your notes under `## [Unreleased]` and they become the next release's notes. The version-writing and CHANGELOG promotion live in [`scripts/release/prepare_release.sh`](./scripts/release/prepare_release.sh) (tested by `tests/scripts/test_prepare_release.sh`); the workflow only decides the target version and does the git/tag/release plumbing.
 
 ## Reporting bugs & requesting features
 
