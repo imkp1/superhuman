@@ -349,7 +349,7 @@ data is already in `$ISSUES`.
 ```bash
 ISSUES="$SCRATCH/issues.json"
 gh issue list --repo OWNER/REPO --state open --limit 30 \
-  --json number,title,labels,comments,createdAt,assignees,body > "$ISSUES"
+  --json number,title,labels,comments,createdAt,assignees,body,isPinned > "$ISSUES"
 ```
 
 Filter in two stages. Stage A runs on `$ISSUES` alone and costs nothing. Stage B
@@ -391,7 +391,17 @@ fi
 
 - **Skip discussion and RFC issues.** A `[Discussion]` / `[RFC]` / `[Proposal]` title or label means the outcome is consensus, not a patch.
 
-  The decline and already-fixing tests match prose and will misfire. Bias them toward skipping, and emit a reason per skip so the misfires stay visible.
+- **Skip pinned issues.** A pin is a repo-level notice — "the project moved", "read this first". It is not a defect.
+
+- **Skip meta and tracking issues.** An `[Announcement]` / `[Meta]` / `[Tracking]` / `[Umbrella]` / `[Epic]` / `[Roadmap]` / `[Question]` / `[Support]` title or label is a container for other work, or a request for help. Neither is patchable.
+
+- **Skip security-report process complaints.** "My report got no reply" is answered by an advisory, not a PR. Key on report-process language (`security policy`, `vulnerability I submitted`) — a genuine vulnerability with a patchable root cause is still a candidate.
+
+  These three exist because the triage gate cannot see them: an announcement or a
+  process complaint attracts maintainer comments and taxonomy labels, so it clears
+  every engagement test above while containing nothing to fix.
+
+  The decline, already-fixing and security-process tests match prose and will misfire. Bias them toward skipping, and emit a reason per skip so the misfires stay visible.
 
 
 ```bash

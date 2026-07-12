@@ -74,7 +74,27 @@ cat > "$tmpdir/issues.json" <<EOF
    "comments": [{"authorAssociation": "NONE", "author": null,
       "body": "comment from a since-deleted account", "createdAt": "$OLD"},
      {"authorAssociation": "COLLABORATOR", "author": {"login": "maint-d"},
-      "body": "Reproduced — PRs welcome.", "createdAt": "$OLD"}]}
+      "body": "Reproduced — PRs welcome.", "createdAt": "$OLD"}]},
+
+  {"number": 908, "title": "New models live in acme/successor 🚀", "isPinned": true,
+   "createdAt": "$OLD", "assignees": [],
+   "labels": [{"name": "documentation"}, {"name": "enhancement"}, {"name": "priority: low"}],
+   "comments": []},
+
+  {"number": 909, "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}],
+   "title": "[Bug]: The vulnerability I submitted according to your security policy has not received a response",
+   "comments": [{"authorAssociation": "MEMBER", "author": {"login": "maint-b"},
+     "body": "Sorry for the delay, we are looking at the report.", "createdAt": "$OLD"}]},
+
+  {"number": 910, "title": "[Tracking] Q3 umbrella for the storage rewrite",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "kind:task"}],
+   "comments": [{"authorAssociation": "MEMBER", "author": {"login": "maint-b"},
+     "body": "Children linked below.", "createdAt": "$OLD"}]},
+
+  {"number": 911, "title": "Path traversal in the upload handler reads files outside the root",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}, {"name": "security"}],
+   "comments": [{"authorAssociation": "MEMBER", "author": {"login": "maint-b"},
+     "body": "Confirmed, the join is unsanitised. PR welcome.", "createdAt": "$OLD"}]}
 ]
 EOF
 
@@ -138,6 +158,24 @@ dropped 906 "needs-triage only, no maintainer"
 # A deleted account serializes as author: null, and `null | test(...)` throws —
 # one ghost comment aborted the entire batch, taking every other issue with it.
 want 907 KEEP "ghost author does not abort the batch"
+
+# A pinned "this repo moved" notice carries a maintainer taxonomy label, so the
+# triage gate blesses it. It is a notice, not a defect: nothing to patch.
+want 908 SKIP "pinned announcement"
+want_reason 908 pinned
+
+# A complaint about an unanswered security report is labelled `bug` and answered
+# by a MEMBER — every approval signal, no defect described.
+want 909 SKIP "security-report process complaint"
+want_reason 909 advisory
+
+# Tracking/umbrella issues are containers for other work.
+want 910 SKIP "tracking/umbrella"
+want_reason 910 meta
+
+# Control: a real vulnerability with a patchable root cause must survive. The
+# security guard keys on report-process language, not on the word "security".
+want 911 KEEP "genuine security bug is still a candidate"
 
 # Config errors must exit 10, never a verdict code. A config error applies to
 # every issue equally, so a verdict-shaped exit empties the candidate set while

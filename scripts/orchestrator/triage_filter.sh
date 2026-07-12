@@ -62,6 +62,18 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
   + "|i.m working on|working on (a fix|this)|already fixed in"
   + "|(fix|pr) (is )?incoming"                                             as $claimed
 
+  # Announcements and containers wear defect labels. A pinned "the project moved"
+  # notice earns a maintainer taxonomy label and every engagement signal the gate
+  # tests for, and there is still nothing in it to patch.
+  | "^\\s*.(announcement|notice|meta|tracking|umbrella|epic|roadmap|question|support)." as $meta
+  | "^(announcement|meta|tracking|umbrella|epic|roadmap|question|support)$"  as $metaL
+
+  # A complaint that a security report went unanswered is a process grievance, not
+  # a defect: the fix is a maintainer reply. Keyed on report-process language, so a
+  # genuine vulnerability with a patchable cause still ranks.
+  | ("security (policy|advisory)|vulnerabilit.{0,40}(submitt|report)"
+     + "|(submitt|report)ed.{0,40}vulnerabilit")                          as $secproc
+
   | .[]
   | . as $i
   # `// ""` guards ghost authors: a deleted account serializes as `author: null`,
@@ -97,6 +109,15 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
          or ($L | any(test("^(discussion|rfc|proposal)$"))) then
       {verdict: "SKIP", number: $i.number,
        reason: "discussion/RFC — outcome is consensus, not a patch"}
+    elif ($i.isPinned // false) then
+      {verdict: "SKIP", number: $i.number,
+       reason: "pinned announcement — a repo-level notice, not a defect"}
+    elif ($i.title | test($meta; "i")) or ($L | any(test($metaL))) then
+      {verdict: "SKIP", number: $i.number,
+       reason: "meta/tracking — a container for other work, not a patchable defect"}
+    elif ($i.title | test($secproc; "i")) then
+      {verdict: "SKIP", number: $i.number,
+       reason: "security-report process complaint — answered by an advisory, not a PR"}
     elif ($mbody | test($declined)) then
       {verdict: "SKIP", number: $i.number,
        reason: "maintainer declined it"}
