@@ -58,7 +58,7 @@ if [ ! -f "$SHORTLIST" ]; then
 fi
 
 echo "Top $N candidates:"
-jq -r '.repos[] | "\(.score)\t\(.repo)\t\(.notes // "")"' "$SHORTLIST" \
+jq -r '.repos[] | "\(.scores.final)\t\(.repo)\t\(.notes // "")"' "$SHORTLIST" \
   | head -"$N" \
   | awk -F'\t' 'BEGIN{printf "%-6s %-32s %s\n","score","repo","notes"}
                 {printf "%-6s %-32s %s\n",$1,$2,$3}'
