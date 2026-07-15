@@ -5,7 +5,7 @@
 # `langauges: go` that parses to "no language filter" produces a confidently
 # wrong scan with exit 0 — the failure class the whole design exists to remove.
 set -uo pipefail
-CLAUDE_PLUGIN_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+CLAUDE_PLUGIN_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT
 # shellcheck source=../../scripts/lib/preferences.sh
 . "$CLAUDE_PLUGIN_ROOT/scripts/lib/preferences.sh"

@@ -135,7 +135,10 @@ while IFS= read -r q; do
   [ -n "$q" ] || continue
   # total_count, not the items array: a MALFORMED query also returns an empty
   # array, so counting rows cannot tell a typo from a genuinely empty result.
-  n=$(gh api -X GET search/repositories -f q="$q" -f per_page=1 --jq '.total_count')
+  if ! n=$(gh api -X GET search/repositories -f q="$q" -f per_page=1 --jq '.total_count' 2>&1); then
+    printf '  %s\n    -> API call failed (rate limit / auth?): %s\n' "$q" "$n"
+    continue
+  fi
   printf '  %s\n    -> %s repos\n' "$q" "${n:-0}"
   if [ "${n:-0}" -eq 0 ]; then
     echo "    WARNING: matches NOTHING. Check the topic for a typo, or lower the star floor."
