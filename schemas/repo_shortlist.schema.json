@@ -32,6 +32,17 @@
         "min_score": {"type": "number"}
       }
     },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "How much of the candidate space was actually scored, so a partial scan is visible in the artifact rather than only in the agent's prose. `scored` much smaller than `survivors` means repos were never evaluated and a good lower-ranked repo may be missing — a fact a downstream consumer, or the user, can only act on if it is written here.",
+      "properties": {
+        "candidates": {"type": "integer", "minimum": 0, "description": "unique repos after dedup across all queries"},
+        "survivors":  {"type": "integer", "minimum": 0, "description": "candidates that passed the Step 2 fast filter"},
+        "scored":     {"type": "integer", "minimum": 0, "description": "survivors actually scored in Step 3; must equal survivors unless the deterministic Step 1 cap truncated the set"},
+        "returned":   {"type": "integer", "minimum": 0, "description": "repos in this shortlist"}
+      }
+    },
     "repos": {
       "type": "array",
       "items": {

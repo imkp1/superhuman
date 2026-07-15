@@ -121,9 +121,18 @@ EOF
 ```
 
 Deduplicate on `full_name`, then order deterministically — **stars descending,
-then `full_name` ascending** — *before* taking the top 50 to score. Without an
-explicit order, *which* 50 repos get scored is an artifact of query order and
-changes between runs.
+then `full_name` ascending**. Without an explicit order, *which* repos get scored
+is an artifact of query order and changes between runs.
+
+Carry the **entire** ordered set into Steps 2–4; do not truncate to a fixed
+top-N here. Scoring (Step 3) walks this order, and issue-selection (Step 4) walks
+the score-ranked result until it has filled the N the user asked for — so a fixed
+cut at this point silently drops survivors below the line before they are ever
+scored, and a lower-star repo with fast maintainers (responsiveness plus
+outside-contributor track are 60% of the score and are uncorrelated with stars)
+can never surface no matter how good it is. The only bound is a safety ceiling of
+**100 survivors**, to stop a pathological all-topics scan from scoring thousands;
+hitting it is rare and is recorded in `coverage` (Step 5).
 
 Expect 50-100 unique repos after dedup. **If fewer survive than the user asked
 for, say so** ("12 of 63 candidates matched; showing 12") and stop. Never widen a
@@ -246,6 +255,17 @@ EOF
 ### Step 3: Score Each Surviving Repo
 
 For repos that pass the fast filter, compute a contribution-friendliness score.
+
+**Score every survivor — all of them, in the deterministic Step 1 order (stars
+descending, then `full_name` ascending).** The only permitted bound on how many
+you score is the Step 1 cap that already trimmed the candidate set; there is no
+"I have enough good ones, I'll stop" cutoff. Stopping early at an ad-hoc number
+silently drops repos ranked below the cutoff — a genuinely better lower-star repo
+you never scored cannot be reported as "no opportunity," it is simply invisible,
+and the shortfall looks like a thin field rather than a partial scan. If you
+truly cannot score the whole set (rate limit, time), score strictly down the
+ordered list and record the shortfall in `coverage` (Step 5) so it is visible in
+the file, never only in your reply.
 
 Weights: responsiveness **35%**, outside-contributor track **25%**, opportunity
 quality **25%**, AI-friendliness **15%**.
@@ -481,7 +501,22 @@ but runs no review bots falls through to "no AI mentions anywhere: 6" — scorin
 
 ### Step 4: Find Best Issue Per Repo
 
-For each repo in the top 15 by score, find the single best issue to contribute to:
+Walk the **score-ranked** survivors from Step 3, highest first, and for each find
+the single best issue to contribute to (procedure below). This is a fill-to-N
+loop, not a fixed slice:
+
+- Keep a repo whose best issue clears the hard filter (issue-score 8+); skip a
+  repo whose issues are all raced, stale, or below the bar.
+- **Continue down the ranked list until the shortlist holds N kept repos, or the
+  scored survivors are exhausted** — whichever comes first. Never stop with open
+  slots while unexamined scored survivors remain: returning 4-of-5 when the 5th
+  is one issue-check away is the exact failure this loop removes. The old "top 15
+  by score" cut caused it — a repo ranked 16th with a clean good-first-issue was
+  never looked at.
+- Returning fewer than N is still honest **only** when the scored set is truly
+  exhausted (every survivor examined, none left with a viable issue). Record
+  `scored` and `returned` in `coverage` so the shortfall is a visible number, not
+  a silent one.
 
 One bulk fetch supplies every issue-level field the hard filters need. Its
 `comments` array carries `authorAssociation`, `author.login` and `createdAt` per
@@ -773,6 +808,12 @@ Record the **resolved** filters in `criteria` — the ones that actually ran, fr
 produced it, and a scan that searched Python when you asked for Go is visible in
 the file rather than three scans later.
 
+Record `coverage` too: `candidates` (unique after dedup), `survivors` (passed the
+Step 2 fast filter), `scored` (survivors you actually scored in Step 3), and
+`returned` (rows in this shortlist). `scored` should equal `survivors`; a gap
+means the safety ceiling or a rate/time limit truncated the scan, and the reader
+needs that number to know the list is partial rather than the field being thin.
+
 ```json
 {
   "generated_at": "ISO8601",
@@ -787,6 +828,7 @@ the file rather than three scans later.
     ],
     "min_score": 60
   },
+  "coverage": {"candidates": 102, "survivors": 78, "scored": 78, "returned": 5},
   "repos": [
     {
       "rank": 1,

@@ -175,6 +175,13 @@ fi
 
 echo "Top $N candidates:"
 
+# Coverage line: make a partial scan visible here, not only in the agent's reply.
+# `scored` < `survivors` means repos were never evaluated — the list is short
+# because the scan stopped, not because the field is thin. Absent on older
+# shortlists written before coverage existed, so print only when present.
+jq -e '.coverage' "$SHORTLIST" >/dev/null 2>&1 && \
+  jq -r '.coverage | "  coverage: scored \(.scored // "?")/\(.survivors // "?") survivors, returned \(.returned // "?") of \(.candidates // "?") candidates"' "$SHORTLIST"
+
 # No awk here, for the same reason the parser above reads no positional: awk's
 # field refs are spelled $1/$2/$3, and the harness eats them exactly as it eats
 # a shell positional. `printf "%-6s %-32s %s\n",$1,$2,$3` reaches bash as
