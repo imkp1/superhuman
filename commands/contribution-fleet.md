@@ -38,14 +38,19 @@ if [ -z "$ARG" ]; then
 elif [[ "$ARG" =~ ^[0-9]+$ ]]; then
   N="$ARG"
 else
-  # Explicit slugs
-  for tok in $ARG; do
+  # Explicit slugs, one per line. `for tok in $ARG` would need the shell to split an
+  # unquoted expansion; zsh does not, so every slug glues into one token and the
+  # owner/repo regex rejects a valid invocation.
+  while IFS= read -r tok; do
+    [ -n "$tok" ] || continue
     if [[ "$tok" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
       TARGETS+=("$tok")
     else
       echo "SKIP malformed slug: $tok"
     fi
-  done
+  done <<EOF
+$(printf '%s' "$ARG" | tr ' \t' '\n\n')
+EOF
 fi
 
 # Auto-mode: pull top N from the shortlist

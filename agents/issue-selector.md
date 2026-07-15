@@ -66,15 +66,24 @@ strict `{docs, documentation, doc}` set missed namespaced labels like
 
 ```bash
 # For each label name:
-NORM=$(echo "$LABEL" | tr '[:upper:]' '[:lower:]' | tr '/_:-' ' ')
-for tok in $NORM; do
+# Split to one token per LINE and read with `while read`, not `for tok in $NORM`:
+# zsh does not split unquoted expansions, so the whole label would arrive as one
+# token and every docs label would pass the filter.
+#
+# `-` is NOT a delimiter: it is a literal in the `release-notes` and `copy-edit`
+# arms below, and splitting on it makes those two arms unreachable.
+NORM=$(echo "$LABEL" | tr '[:upper:]' '[:lower:]' | tr '/_: ' '\n\n\n\n')
+while IFS= read -r tok; do
+  [ -n "$tok" ] || continue
   case "$tok" in
     *doc*|typo|readme|changelog|releasenote|release-notes|\
 grammar|spelling|wording|copy-edit|l10n|i18n|translation|\
 website|site|blog|tutorial|example|examples)
       skip "docs-label (broad): $LABEL"; break ;;
   esac
-done
+done <<EOF
+$NORM
+EOF
 ```
 
 **Filter B — docs-only title pattern (broadened).** Skip (reason

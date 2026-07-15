@@ -38,16 +38,33 @@ rc=$?
 set -e
 [ "$rc" = "3" ] || { echo "FAIL lock rc: $rc"; exit 1; }
 
-# Config error: CLAUDE_PLUGIN_ROOT unset. Must NOT reuse 1 (blocklisted) or
-# 2 (cooldown) — callers drop a repo on any nonzero code, so a config error
-# wearing a verdict's exit code silently drops every candidate and the scan
-# ends with an empty shortlist that looks like a legitimate clean run.
 GATE="$CLAUDE_PLUGIN_ROOT/scripts/orchestrator/reputation_gate.sh"
+
+# CLAUDE_PLUGIN_ROOT unset must still produce a VERDICT, by deriving the root from
+# the script's own path. It is a template variable: the harness expands it into
+# agent and command markdown, so every caller invokes this script by absolute path
+# and none of them export it. Demanding it from the environment made the gate exit
+# 10 on the first candidate and abort the entire scan for every real caller.
 set +e
-( unset CLAUDE_PLUGIN_ROOT; HOME="$tmpdir" bash "$GATE" --repo any/repo --now "$NOW" ) >/dev/null 2>&1
+( unset CLAUDE_PLUGIN_ROOT; HOME="$tmpdir" bash "$GATE" --repo eligible/repo --now "$NOW" ) >/dev/null 2>&1
 rc=$?
 set -e
-[ "$rc" = "10" ] || { echo "FAIL unset CLAUDE_PLUGIN_ROOT rc: $rc (want 10)"; exit 1; }
+[ "$rc" = "0" ] || { echo "FAIL unset CLAUDE_PLUGIN_ROOT rc: $rc (want 0 — must self-derive)"; exit 1; }
+
+# ...but a root that cannot be derived is still a config error, not a verdict. It
+# must NOT reuse 1 (blocklisted) or 2 (cooldown): callers drop a repo on any
+# nonzero code, so a config error wearing a verdict's exit code silently drops
+# every candidate and the scan ends with an empty shortlist that looks like a
+# legitimate clean run. Copy the script where its ../.. holds no scripts/lib.
+mkdir -p "$tmpdir/orphan/scripts/orchestrator"
+cp "$GATE" "$tmpdir/orphan/scripts/orchestrator/reputation_gate.sh"
+set +e
+( unset CLAUDE_PLUGIN_ROOT
+  HOME="$tmpdir" bash "$tmpdir/orphan/scripts/orchestrator/reputation_gate.sh" \
+    --repo any/repo --now "$NOW" ) >/dev/null 2>&1
+rc=$?
+set -e
+[ "$rc" = "10" ] || { echo "FAIL underivable root rc: $rc (want 10)"; exit 1; }
 
 # Config error: bad usage. Same rule — must not collide with a verdict code.
 set +e

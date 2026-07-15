@@ -5,9 +5,13 @@
 # which issues are worth ranking. Emits, per issue that clears the age and
 # triage-signal gates:
 #
-#   {"verdict":"KEEP","number":N,"maintainer_commented":bool,
+#   {"verdict":"KEEP","number":N,"title":"…","labels":["bug"],"body":"…",
+#    "createdAt":"ISO8601","maintainer_commented":bool,
 #    "maintainer_comment_assoc":bool,"last_maintainer_comment":"ISO8601"|null}
 #   {"verdict":"SKIP","number":N,"reason":"..."}
+#
+# A KEEP row carries the issue payload: the Step-4 rubric scores
+# title/labels/body/createdAt and may not re-fetch them.
 #
 # Issues that fail those two gates produce no output at all — they are not
 # candidates. Everything past them earns an explicit SKIP with a reason, because
@@ -56,13 +60,21 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
   # Parens are load-bearing: `A + B as $x | rest` binds as `A + (B as $x | rest)`,
   # so an unparenthesized concat spills the string into the downstream object
   # stream and jq aborts ("string and object cannot be added") on every issue.
+  # A refusal is also a decline: "we cannot fix bugs on v4" closes the door as
+  # firmly as "wontfix".
   | ("by design|working as intended|works as intended|not a bug|isn.t a bug"
   + "|don.t think (that )?this is a bug|expected behaviou?r|this is expected"
-  + "|won.t fix|wontfix|out of scope|not something we|we don.t plan")       as $declined
+  + "|won.t fix|wontfix|out of scope|not something we|we don.t plan"
+  + "|(can.t|cannot|can not) fix|not (fixing|supporting) (this|that|it)"
+  + "|no longer (supported|maintained)|we do not support")                  as $declined
 
-  # A maintainer who already holds the patch will land theirs, not ours.
+  # A maintainer who already holds the patch will land theirs, not ours. The fix is
+  # as often announced as promised, so match both: "should have fixed it in
+  # tokenizers v0.23.1" names a dead issue.
   | ("patch locally|i have a (fix|patch)|i.ll (fix|push|open|submit)"
-  + "|i.m working on|working on (a fix|this)|already fixed in"
+  + "|i.m working on|working on (a fix|this)"
+  + "|(already |should have )?fixed (it |this )?in [a-z0-9.@/#-]"
+  + "|(fix|patch) (has )?landed|landed in|resolved (in|by) (#|[a-z0-9])"
   + "|(fix|pr) (is )?incoming")                                             as $claimed
 
   # Announcements and containers wear defect labels. A pinned "the project moved"
@@ -128,7 +140,14 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
       {verdict: "SKIP", number: $i.number,
        reason: "maintainer is already fixing it"}
     else
+      # Carry the issue payload, not just a verdict on a number. The Step-4 rubric
+      # scores title, labels, body and createdAt, and the agent contract forbids
+      # re-fetching them — emit them here or the caller has no legal source.
       {verdict: "KEEP", number: $i.number,
+       title: $i.title,
+       labels: $L,
+       body: ($i.body // ""),
+       createdAt: $i.createdAt,
        maintainer_commented: ($mc | length > 0),
        maintainer_comment_assoc: ($mca | length > 0),
        last_maintainer_comment: ($mc | map(.createdAt) | max)}

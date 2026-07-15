@@ -70,7 +70,7 @@ AGENT="$CLAUDE_PLUGIN_ROOT/agents/repo-finder.md"
 # block and run it against a stubbed gh. No network.
 STEP1=$(awk '
   /^```bash$/ {inb=1; buf=""; next}
-  /^```$/     {if (inb && buf ~ /DEFAULT_QUERIES=/) {printf "%s", buf; exit} inb=0; buf=""; next}
+  /^```$/     {if (inb && buf ~ /build_queries\.sh/) {printf "%s", buf; exit} inb=0; buf=""; next}
   inb         {buf = buf $0 "\n"}
 ' "$AGENT")
 [ -n "$STEP1" ] || { echo "FAIL could not extract the Step 1 query block"; exit 1; }
@@ -95,8 +95,14 @@ chmod +x "$tmpdir/bin/gh"
 # to observe what the loop actually collected. An abort exits before reaching it.
 { cat "$tmpdir/step1.sh"; echo 'printf "%s" "$CANDIDATES"'; } > "$tmpdir/run.sh"
 
+# Fake HOME: Step 1 now compiles its queries from ~/.superhuman/preferences.md via
+# build_queries.sh. Under the real HOME this test would search whatever the
+# developer happens to prefer, and would pass or fail accordingly. An absent file
+# is the default profile, which is what a fresh machine sees.
+mkdir -p "$tmpdir/home"
+
 run_step1() {  # run_step1 <mode> -> Step 1's exit code; stdout/stderr in $tmpdir/out
-  GH_STUB_MODE="$1" PATH="$tmpdir/bin:$PATH" \
+  GH_STUB_MODE="$1" PATH="$tmpdir/bin:$PATH" HOME="$tmpdir/home" \
     bash "$tmpdir/run.sh" > "$tmpdir/out" 2>&1
 }
 

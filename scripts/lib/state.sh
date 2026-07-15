@@ -41,13 +41,31 @@ jsonschema.validate(data, schema)
 PY
     return $?
   fi
-  local req
+  # Announce the degradation. This fallback checks TOP-LEVEL required keys only and
+  # cannot see inside an array, so every nested constraint goes unchecked: a
+  # shortlist whose `repos[]` rows are missing `repo` or `scores.final` validates
+  # clean here. Callers must assert their own row invariants, and can only know to
+  # do so if the degradation is visible. Silence makes an unvalidated document look
+  # validated.
+  echo "validate_json: WARN: python3 jsonschema not available — falling back to a" >&2
+  echo "  top-level required-key check. Nested constraints (array rows, sub-objects)" >&2
+  echo "  are NOT validated. Install it with: python3 -m pip install jsonschema" >&2
+
+  # Read one field per line. `for k in $req` would need the shell to split an
+  # unquoted expansion; zsh does not, and this file is SOURCED, so it runs in the
+  # caller's shell — zsh on macOS, where the whole field list arrives as one word
+  # and a valid document is rejected. This is the fallback path whenever
+  # `python3 -m jsonschema` is absent.
+  local req k
   req=$(jq -r '.required // [] | .[]' "$schema")
-  for k in $req; do
+  while IFS= read -r k; do
+    [ -n "$k" ] || continue
     jq -e --arg k "$k" 'has($k)' "$data" >/dev/null || {
       echo "validate_json: missing required field: $k" >&2
       return 1
     }
-  done
+  done <<EOF
+$req
+EOF
   return 0
 }

@@ -33,13 +33,16 @@ Entry points:
 
 - Full contribution: read `agents/opensource-contributor.md` and execute the
   phase sequence inline.
-- Repo discovery: read `agents/repo-finder.md`.
+- Repo discovery: read `agents/repo-finder.md`. Its search filters come from
+  `~/.superhuman/preferences.md`, compiled by `scripts/repo-finder/build_queries.sh`
+  — never hardcode a language or topic into a query.
 - Issue selection, profiling, planning, building, scoring, review dispatch, and
   comment resolution: read the corresponding file in `agents/`.
 - Claude Code slash command requests such as `/contribute`, `/repo-finder`,
-  `/contribute-loop`, `/contribution-fleet`, and `/contribution-dashboard`:
-  read the matching file under `commands/`, then translate any `Agent(...)`
-  calls into inline execution of the referenced agent contract.
+  `/preferences`, `/contribute-loop`, `/contribution-fleet`, and
+  `/contribution-dashboard`: read the matching file under `commands/`, then
+  translate any `Agent(...)` calls into inline execution of the referenced agent
+  contract.
 
 ## State And Safety
 

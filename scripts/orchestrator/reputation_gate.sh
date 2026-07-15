@@ -8,10 +8,20 @@ set -euo pipefail
 
 EX_CONFIG=10
 
+# Derive the plugin root from this script's own location when the environment does
+# not carry it. CLAUDE_PLUGIN_ROOT is a *template* variable: the harness expands it
+# into agent and command markdown, so every caller invokes this script by absolute
+# path — but it is never exported into the shell, so the script cannot read it back.
+# Demanding it here made the gate exit 10 ("misconfigured") on the first candidate
+# and abort the entire scan, for every caller that used the documented snippet.
+#
+# scripts/orchestrator/reputation_gate.sh -> ../.. is the plugin root.
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
-  echo "reputation_gate.sh: CONFIG ERROR: CLAUDE_PLUGIN_ROOT is unset." >&2
-  echo "  This is NOT a verdict about the repo. Export it and re-run." >&2
-  exit "$EX_CONFIG"
+  CLAUDE_PLUGIN_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd) || {
+    echo "reputation_gate.sh: CONFIG ERROR: cannot resolve plugin root from \$0=$0" >&2
+    echo "  This is NOT a verdict about the repo." >&2
+    exit "$EX_CONFIG"
+  }
 fi
 if [ ! -r "${CLAUDE_PLUGIN_ROOT}/scripts/lib/state.sh" ]; then
   echo "reputation_gate.sh: CONFIG ERROR: cannot read" \

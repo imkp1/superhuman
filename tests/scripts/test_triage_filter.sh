@@ -52,6 +52,7 @@ cat > "$tmpdir/issues.json" <<EOF
 
   {"number": 903, "title": "Workspace tree omits deep folders",
    "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}],
+   "body": "Steps to reproduce: nest a folder six levels deep, then open the tree.",
    "comments": [{"authorAssociation": "COLLABORATOR", "author": {"login": "maint-d"},
      "body": "Good catch — the tree is scanned server-side with a max depth. PRs welcome!",
      "createdAt": "$OLD"}]},
@@ -94,7 +95,18 @@ cat > "$tmpdir/issues.json" <<EOF
   {"number": 911, "title": "Path traversal in the upload handler reads files outside the root",
    "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}, {"name": "security"}],
    "comments": [{"authorAssociation": "MEMBER", "author": {"login": "maint-b"},
-     "body": "Confirmed, the join is unsanitised. PR welcome.", "createdAt": "$OLD"}]}
+     "body": "Confirmed, the join is unsanitised. PR welcome.", "createdAt": "$OLD"}]},
+
+  {"number": 912, "title": "Tokenizer drops a trailing byte on some inputs",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}],
+   "comments": [{"authorAssociation": "MEMBER", "author": {"login": "maint-b"},
+     "body": "Thanks — this should have fixed it in tokenizers v0.23.1, can you retry?",
+     "createdAt": "$OLD"}]},
+
+  {"number": 913, "title": "[v4] Loader raises on a valid checkpoint",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}],
+   "comments": [{"authorAssociation": "MEMBER", "author": {"login": "maint-b"},
+     "body": "We can't fix bugs on v4 — please upgrade to v5.", "createdAt": "$OLD"}]}
 ]
 EOF
 
@@ -177,6 +189,16 @@ want_reason 910 meta
 # security guard keys on report-process language, not on the word "security".
 want 911 KEEP "genuine security bug is still a candidate"
 
+# A fix is as often announced as promised: "should have fixed it in vX" names a
+# dead issue, and `already fixed in` does not match that phrasing.
+want 912 SKIP "maintainer says the fix already landed"
+want_reason 912 "already fixing"
+
+# A refusal is also a decline: "we can.t fix bugs on v4" closes the door as firmly
+# as "wontfix".
+want 913 SKIP "maintainer declined in the negative"
+want_reason 913 "declined"
+
 # Config errors must exit 10, never a verdict code. A config error applies to
 # every issue equally, so a verdict-shaped exit empties the candidate set while
 # looking like a clean run.
@@ -194,5 +216,40 @@ set +e
 rc=$?
 set -e
 [ "$rc" = "10" ] || { echo "FAIL missing issues file rc: $rc (want 10)"; exit 1; }
+
+# --- A KEEP row must carry the issue payload, not just a verdict on a number. ---
+#
+# The Step-4 rubric scores "is a bug" (title/labels), "has reproduction steps"
+# (body), "labeled good-first-issue" (labels) and issue age (createdAt), and the
+# agent contract forbids re-fetching any of it. Emit them here or the caller has no
+# legal source.
+for f in title labels body createdAt; do
+  got=$(field 903 "$f")
+  [ -n "$got" ] && [ "$got" != "null" ] \
+    || { echo "FAIL #903 KEEP row is missing '$f' — the Step-4 rubric cannot score without it"; exit 1; }
+done
+
+case "$(field 903 title)" in
+  *"Workspace tree omits deep folders"*) ;;
+  *) echo "FAIL #903 title did not round-trip: got '$(field 903 title)'"; exit 1 ;;
+esac
+# Labels arrive normalized to lowercase strings, not {name: …} objects: the shape
+# the rubric's good-first-issue / bug tests read.
+[ "$(jq -r 'select(.number == 903) | .labels | join(",")' "$OUT")" = "bug" ] \
+  || { echo "FAIL #903 labels shape: want [\"bug\"]"; exit 1; }
+case "$(field 903 body)" in
+  *"Steps to reproduce"*) ;;
+  *) echo "FAIL #903 body did not round-trip: got '$(field 903 body)'"; exit 1 ;;
+esac
+
+# An issue with no body at all must still emit "" rather than null — the rubric's
+# "has reproduction steps" test greps the body, and grepping null is a crash.
+[ "$(field 904 body)" = "" ] \
+  || { echo "FAIL #904 has no body; want empty string, got '$(field 904 body)'"; exit 1; }
+
+# A SKIP row carries only a reason: it is not a candidate, and a SKIP shaped like a
+# KEEP invites the caller to score it.
+[ "$(field 21795 title)" = "null" ] \
+  || { echo "FAIL #21795 is a SKIP and must not carry a title"; exit 1; }
 
 echo "OK test_triage_filter.sh"
