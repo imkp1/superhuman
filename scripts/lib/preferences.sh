@@ -30,7 +30,7 @@ prefs_path() {
 # block that is not `key: value` is an error, not prose — prose belongs in Notes.
 _prefs_filter_lines() {
   awk '
-    /^##[ \t]+/ { inblk = ($0 ~ /^##[ \t]*[Ff]ilters[ \t]*$/); next }
+    /^##[ \t]+/ { inblk = (tolower($0) ~ /^##[ \t]*filters[ \t]*$/); next }
     !inblk      { next }
     /^[ \t]*$/  { next }
     /^[ \t]*#/  { next }

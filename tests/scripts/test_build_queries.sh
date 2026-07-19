@@ -258,6 +258,19 @@ run empty_filters > "$tmpdir/empty_filters.txt" \
 diff -u "$GOLDEN" "$tmpdir/empty_filters.txt" \
   || fail "empty ## Filters block did not fall back to the default profile"
 
+# 12b. The header is matched case-INSENSITIVELY, not just 'Filters'/'filters'. A
+# '## FILTERS' block must be read as a real filter, never silently ignored —
+# which, combined with the fallback above, would emit the DEFAULT profile and
+# drop the user's filters with no error at all.
+write upper_header <<'EOF'
+## FILTERS
+languages: go
+topics: backend
+stars: 2000
+EOF
+[ "$(run upper_header)" = "language:go topic:backend stars:>2000 archived:false" ] \
+  || fail "'## FILTERS' not recognized as a Filters block: got '$(run upper_header)'"
+
 # 11. Determinism: same profile, two runs, byte-identical output.
 [ "$(run cross3)" = "$(run cross3)" ] || fail "build is not deterministic"
 
