@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.5] — 2026-07-19
+
 ### Added
 - **User search preferences (`/preferences`, `~/.superhuman/preferences.md`).** `/repo-finder`'s filters were constants baked into the agent prompt (`language:java`, `language:python`), and no command accepted a preference — ask for Go, get Python. They are now sourced from a file the **user** owns. `## Filters` (`languages`, `topics`, `stars`) is mechanical: parsed by `scripts/lib/preferences.sh`, compiled 1:1 into GitHub search qualifiers by `scripts/repo-finder/build_queries.sh`. `## Notes` is prose the agent applies at tie-breaks and issue selection only — never to a numeric score, and disclosed in the shortlist's `notes` field when it does. `topic[:min_stars]` gives one topic its own floor; `any` is reserved and compiles to a query with no `topic:` qualifier; `stars` is a floor and there is no ceiling (a range is a loud error, not a quiet cap). `/repo-finder` gains `--lang` / `--topic` / `--min-stars` overrides that shape one run and never persist. No preferences file means `DEFAULT_PROFILE`, byte-identical to the queries the agent carried inline, so `/contribute` on a fresh machine cannot regress. Covered by `tests/scripts/test_parse_preferences.sh` and `test_build_queries.sh` (network-free, bash 3.2-clean).
 
