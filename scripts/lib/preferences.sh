@@ -30,7 +30,7 @@ prefs_path() {
 # block that is not `key: value` is an error, not prose — prose belongs in Notes.
 _prefs_filter_lines() {
   awk '
-    /^##[ \t]+/ { inblk = ($0 ~ /^##[ \t]*[Ff]ilters[ \t]*$/); next }
+    /^##[ \t]+/ { inblk = (tolower($0) ~ /^##[ \t]*filters[ \t]*$/); next }
     !inblk      { next }
     /^[ \t]*$/  { next }
     /^[ \t]*#/  { next }
@@ -46,6 +46,17 @@ _prefs_filter_lines() {
       print key "\t" val
     }
   ' "$1"
+}
+
+# True when the file declares a `## Filters` block with at least one content line
+# — i.e. `_prefs_filter_lines` would emit something. A file with only `## Notes`,
+# or an empty `## Filters` block, emits nothing: that is "use the default
+# filters", not a catch-all to reject, so callers fall back to DEFAULT_PROFILE
+# rather than aborting. A malformed line is still content (it emits an `ERR` or a
+# bad-key row), so `langauges: go` stays a loud parse error — the fallback can
+# never silently swallow a typo'd filter.
+prefs_has_filters() {
+  [ -n "$(_prefs_filter_lines "${1:-$(prefs_path)}")" ]
 }
 
 # Comma-separated list -> one trimmed entry per line. Whitespace inside an entry

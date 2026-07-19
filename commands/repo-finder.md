@@ -111,12 +111,31 @@ if [ -n "$LANGS$TOPICS$MIN_STARS" ]; then
   # fire the moment this block ends.
   OVERRIDE=$(mktemp "${TMPDIR:-/tmp}/superhuman-prefs.XXXXXX") || { echo "mktemp failed"; exit 1; }
 
+  # If any axis is inherited from the saved profile, that profile must itself be
+  # valid. A malformed saved line (e.g. `langauges: go`) is caught on the normal
+  # /repo-finder path but would be silently dropped by the key-specific extraction
+  # below, letting an override bypass the fail-loud contract. Validate with the
+  # same compiler the normal path uses — but only when something is actually
+  # inherited (a full --lang/--topic/--min-stars override never reads it).
+  if [ -f "$SAVED" ] && { [ -z "$LANGS" ] || [ -z "$TOPICS" ] || [ -z "$MIN_STARS" ]; } \
+     && ! "${CLAUDE_PLUGIN_ROOT}/scripts/repo-finder/build_queries.sh" --file "$SAVED" --no-nudge >/dev/null 2>&1; then
+    echo "Saved ~/.superhuman/preferences.md is malformed; fix it or run /preferences (an override inherits the axes it doesn't name)."
+    rm -f "$OVERRIDE"; exit 1
+  fi
+
   # Inherit each unnamed axis from the saved profile, so --lang rust on a
   # backend-topics profile still searches backend. Read only the `## Filters` block:
   # a `## Notes` line that happens to begin `languages:`/`topics:`/`stars:` (copied
   # prose) must never be mistaken for a hard filter.
   FILTERS=""
-  [ -f "$SAVED" ] && FILTERS=$(awk '/^## Filters/{f=1;next} /^## /{f=0} f' "$SAVED")
+  # Detect the block with the SAME matcher scripts/lib/preferences.sh uses
+  # (case-insensitive via tolower, spacing-tolerant). A divergent reader silently
+  # fails to inherit saved axes on a '## filters'/'## FILTERS' file and searches
+  # with defaults instead — the silent-wrong-result this whole feature guards against.
+  [ -f "$SAVED" ] && FILTERS=$(awk '
+    /^##[ \t]+/ { f = (tolower($0) ~ /^##[ \t]*filters[ \t]*$/); next }
+    f
+  ' "$SAVED")
   if [ -z "$LANGS" ]; then
     LANGS=$(printf '%s\n' "$FILTERS" | sed -n 's/^[[:space:]]*languages:[[:space:]]*//p' | head -1)
   fi
