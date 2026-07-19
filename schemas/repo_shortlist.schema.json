@@ -11,7 +11,37 @@
     "criteria": {
       "type": "object",
       "additionalProperties": true,
-      "description": "the filter that produced this list, e.g. {\"min_stars\":20000,\"min_score\":60}"
+      "description": "the RESOLVED filter that produced this list — what actually ran, from parse_preferences, not what was intended. A scan that searched Python when the user asked for Go is then visible in the file rather than three scans later.",
+      "properties": {
+        "profile":   {"type": "string", "enum": ["user", "default", "override"], "description": "user = ~/.superhuman/preferences.md; default = DEFAULT_PROFILE (no preferences file); override = per-run --lang/--topic/--min-stars"},
+        "languages": {"type": "array", "items": {"type": "string"}, "description": "empty means any language. Languages OR inside one query, so they never add queries."},
+        "topics": {
+          "type": "array",
+          "description": "one search query per entry. `any` is reserved and compiles to a query with no topic: qualifier.",
+          "items": {
+            "type": "object",
+            "required": ["topic"],
+            "properties": {
+              "topic":     {"type": "string"},
+              "min_stars": {"type": "integer", "minimum": 0, "description": "per-entry star floor; overrides min_stars for this topic only"}
+            }
+          }
+        },
+        "min_stars": {"type": "integer", "minimum": 0, "description": "a floor. There is no ceiling: no ranges, no maximum, anywhere."},
+        "queries":   {"type": "array", "items": {"type": "string"}, "description": "the literal q= strings sent to search/repositories"},
+        "min_score": {"type": "number"}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "How much of the candidate space was actually scored, so a partial scan is visible in the artifact rather than only in the agent's prose. `scored` much smaller than `survivors` means repos were never evaluated and a good lower-ranked repo may be missing — a fact a downstream consumer, or the user, can only act on if it is written here.",
+      "properties": {
+        "candidates": {"type": "integer", "minimum": 0, "description": "unique repos after dedup across all queries"},
+        "survivors":  {"type": "integer", "minimum": 0, "description": "candidates that passed the Step 2 fast filter"},
+        "scored":     {"type": "integer", "minimum": 0, "description": "survivors actually scored in Step 3; must equal survivors unless the deterministic Step 1 cap truncated the set"},
+        "returned":   {"type": "integer", "minimum": 0, "description": "repos in this shortlist"}
+      }
     },
     "repos": {
       "type": "array",
@@ -37,7 +67,6 @@
               "opportunity_quality":       {"type": "number"},
               "outside_contributor_track": {"type": "number"},
               "ai_friendliness":           {"type": "number"},
-              "category_bonus":            {"type": "number"},
               "final":                     {"type": "number"}
             }
           },

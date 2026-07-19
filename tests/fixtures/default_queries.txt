@@ -1,0 +1,5 @@
+topic:machine-learning stars:>20000 archived:false
+topic:llm stars:>5000 archived:false
+topic:artificial-intelligence stars:>20000 archived:false
+topic:developer-tools stars:>20000 archived:false
+language:java language:python stars:>20000 archived:false

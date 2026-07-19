@@ -93,6 +93,32 @@ check_prereqs() {
       warn "gh is not authenticated — run 'gh auth login' before contributing"
     fi
   fi
+
+  # jsonschema (the Python package) is what makes validate_json in
+  # scripts/lib/state.sh actually validate: without it the check degrades to a
+  # top-level required-key test that cannot see inside repos[]/scores/best_issue,
+  # so a shortlist with a null repo or a missing score validates clean. Install it
+  # here so the strict validator is the real runtime path, matching CI. PEP 668
+  # (externally-managed Python — the macOS default) blocks a plain install, so
+  # escalate plain -> --user -> --break-system-packages, then verify.
+  if command -v python3 >/dev/null 2>&1; then
+    if python3 -c 'import jsonschema' 2>/dev/null; then
+      ok "python jsonschema"
+    else
+      info "Installing python 'jsonschema' (strict schema validation)"
+      python3 -m pip install --quiet jsonschema 2>/dev/null \
+        || python3 -m pip install --quiet --user jsonschema 2>/dev/null \
+        || python3 -m pip install --quiet --break-system-packages jsonschema 2>/dev/null \
+        || true
+      if python3 -c 'import jsonschema' 2>/dev/null; then
+        ok "python jsonschema"
+      else
+        warn "python 'jsonschema' not installed — schema validation degrades to a top-level-key check. Install it: python3 -m pip install jsonschema"
+        missing=1
+      fi
+    fi
+  fi
+
   [ "$missing" = "0" ] || warn "Some tools are missing; install them from the README before running the workflow."
 }
 

@@ -176,8 +176,51 @@ Codex does not have slash commands. Use these prompts to invoke the same workflo
 | `/contribution-fleet [N]` | Not supported in Codex — fleet runs require parallel subagent dispatch. Run sequential loops instead. |
 | `/contribution-dashboard [owner/repo]` | `Use the superhuman skill to show the contribution dashboard for owner/repo (or all repos if omitted).` |
 | `/repo-finder [N]` | `Use the superhuman skill to refresh my open-source repo shortlist with up to N candidates.` |
+| `/preferences` | `Use the superhuman skill to set my repo search preferences.` |
+| `/preferences --show` | `Use the superhuman skill to show my repo search preferences and the queries they compile to.` |
 
 ## Usage
+
+**Tell it what you want to work on** — run `/preferences` once. Without it, the scan uses a default profile (AI/ML, Java, Python, dev-tools, >20K stars), which is fine but is not *yours*:
+
+```text
+/preferences
+```
+
+It asks four things — languages, topics, a star floor, and anything else in your own words — then writes `~/.superhuman/preferences.md`:
+
+```markdown
+## Filters
+languages: go, rust
+topics: backend, infrastructure, llm:5000, any
+stars: 2000
+
+## Notes
+Prefer small focused libraries over sprawling frameworks.
+I'd rather fix bugs than add features — feature work invites bikeshedding.
+Nothing that needs a GPU to run the test suite.
+```
+
+The two halves do different jobs, and the split is deliberate:
+
+- **`## Filters` is mechanical.** It compiles 1:1 into GitHub search qualifiers. "Only Go and Rust" means only Go and Rust. `topic[:min_stars]` gives one topic its own floor (`llm:5000`); `any` is reserved and means "…plus repos carrying none of these tags"; `stars` is a **floor**, and there is no ceiling.
+- **`## Notes` is prose.** Nothing can hard-filter on "focused rather than sprawling", so the agent applies your notes where judgment actually happens — breaking ties between repos, and choosing which issue to fix — and it tells you in the shortlist's `notes` field when your prose drove the pick. It never touches a score.
+
+You can edit the file by hand; it is yours. `/preferences --show` prints it back along with the exact queries it compiles to, so a filter is never opaque:
+
+```text
+Your next /repo-finder will search:
+  q='language:go language:rust topic:backend        stars:>2000 archived:false'
+  q='language:go language:rust topic:infrastructure stars:>2000 archived:false'
+  q='language:go language:rust topic:llm            stars:>5000 archived:false'
+  q='language:go language:rust                      stars:>2000 archived:false'
+```
+
+One query per topic — languages are free (they union inside a single query, so adding one costs nothing). To deviate for a single run without touching the saved file:
+
+```text
+/repo-finder 5 --lang rust --topic cli
+```
 
 **Single run** — let the orchestrator pick everything:
 
@@ -231,7 +274,8 @@ Orchestrator + 10 specialists + 1 shared-state contract document.
 | Command | Purpose |
 |---|---|
 | `/contribute [owner/repo] [issue#]` | One full end-to-end contribution. Loopable. |
-| `/repo-finder [N]` | Refresh `repo-shortlist.json` with up to N candidate repos (default 10, max 25). |
+| `/preferences` | Set what `/repo-finder` searches for — languages, topics, star floor, free-form notes. Writes `~/.superhuman/preferences.md`. `/preferences --show` prints the current file and the queries it compiles to. |
+| `/repo-finder [N] [--lang X] [--topic Y] [--min-stars Z]` | Refresh `repo-shortlist.json` with up to N candidate repos (default 10, max 25). The flags override your saved preferences **for that run only** — they never write to disk. |
 | `/contribute-loop [N]` | Run N sequential contributions (default 3, max 20). Stops on `suspicious_halt` or `crash`. |
 | `/contribution-fleet [N \| owner/repo ...]` | Launch N parallel contributor runs. |
 | `/contribution-dashboard [owner/repo]` | Read-only view of active run, score history, plateaued dimensions, iteration cap, recent merge outcomes, latest loop. |
@@ -265,9 +309,11 @@ superhuman/
 │   ├── contribute-loop.md
 │   ├── contribution-dashboard.md
 │   ├── contribution-fleet.md
+│   ├── preferences.md
 │   └── repo-finder.md
 ├── scripts/                  # Versioned shell extracted from agent prompts (v0.5.0+)
-│   ├── lib/                  # Shared helpers: state.sh, mistakes.sh, flake.sh, delim.sh, lesson_checks.sh
+│   ├── lib/                  # Shared helpers: state.sh, preferences.sh, mistakes.sh, flake.sh, delim.sh, lesson_checks.sh
+│   ├── repo-finder/          # build_queries.sh — compiles preferences.md into GitHub search queries
 │   ├── profiler/             # repo-profiler steps + scan_structure/write_repo_scan/dossier_fresh
 │   ├── scorer/               # merge-probability-scorer step implementations
 │   ├── orchestrator/         # opensource-contributor + reputation_gate.sh + write_run_summary.sh
@@ -286,6 +332,7 @@ All persistent state lives under `~/.superhuman/`. Per-repo state is keyed by `<
 
 ```
 ~/.superhuman/
+├── preferences.md                       # YOURS. Written by /preferences, read by repo-finder.
 ├── repos/
 │   └── apache-airflow/
 │       ├── repo_profile.json
@@ -317,6 +364,8 @@ All persistent state lives under `~/.superhuman/`. Per-repo state is keyed by `<
 
 File ownership (sole-writer + readers) is documented in `agents/SHARED_STATE.md`. Every shared-state file has a matching JSON Schema (draft 2020-12) under `schemas/`, validated at write time.
 
+`preferences.md` is the exception, and its location says so: `global/` holds cross-repo *state* (mostly agent-written, with user-editable exceptions like `repo_blocklist.json`), while `preferences.md` sits at the root because it is not state at all — it is **input**. No agent writes it; `/preferences` writes it on your behalf.
+
 ## Safety rails
 
 - **Impact audits before refactors.** `builder` invokes `impact-auditor` before applying any reviewer-suggested refactor to a shared function. Blocks the class of bug where "just read `self.app.config` instead of calling `conf.get()`" is correct at Flask request time and fatal at FastAPI startup.
@@ -339,6 +388,12 @@ See [SECURITY.md](./SECURITY.md) for the full safety model and how to report a v
 
 **What is superhuman?**
 superhuman is an autonomous open-source contribution agent for [Claude Code](https://claude.com/claude-code) and Codex. It's a multi-agent harness that picks an open issue in a repository, writes the fix, scores its own pull request on a 10-dimension merge-probability rubric, and iterates on the weakest dimension until a maintainer would merge it.
+
+**How do I make it look for the kind of repos I actually care about?**
+Run `/preferences`. It asks for languages, topics, a star floor, and anything else in your own words, then writes `~/.superhuman/preferences.md` — a file you own and can hand-edit. Filters are hard (only Go and Rust means only Go and Rust); the notes are advisory and steer which issue gets picked. `/preferences --show` prints the exact GitHub queries your answers compile to, so you can see the filter rather than trust it. Without a preferences file, the scan uses a sensible default profile.
+
+**Why does `/repo-finder` return fewer repos than I asked for?**
+Because your filters matched that many. It reports honestly ("12 of 63 candidates matched; showing 12") and will not widen a query to pad the list — filler is what made the shortlist feel random in the first place. Loosen the filters (drop a topic, lower `stars`, add `any`) if you want more.
 
 **How is it different from Copilot, Cursor, Devin, or a plain coding agent?**
 Most AI coding tools are *open-loop*: they generate a change once and hope it's good. superhuman is *closed-loop*. It grades its own pull request before opening it, spends each iteration fixing the single weakest dimension, re-scores, and stops only when it converges — gradient descent on one objective: *will a maintainer merge this?*

@@ -14,9 +14,10 @@ Thanks for your interest. This is a [Claude Code](https://claude.com/claude-code
 superhuman/
 ├── .claude-plugin/   # plugin.json + marketplace.json manifests
 ├── agents/           # subagent prompts (the behavioral logic) + SHARED_STATE.md
-├── commands/         # slash commands (/contribute, /repo-finder, …)
+├── commands/         # slash commands (/contribute, /repo-finder, /preferences, …)
 ├── scripts/          # shell extracted from agent prompts, organised by agent
-│   ├── lib/          # shared helpers: state.sh, mistakes.sh, flake.sh, delim.sh
+│   ├── lib/          # shared helpers: state.sh, preferences.sh, mistakes.sh, flake.sh, delim.sh
+│   ├── repo-finder/  # build_queries.sh — compiles preferences.md into search queries
 │   ├── profiler/  scorer/  orchestrator/  builder/
 ├── schemas/          # JSON Schema (draft 2020-12) for every shared-state file
 ├── tests/scripts/    # bash unit tests for scripts/ (one per script/schema)
@@ -29,6 +30,7 @@ Behavior is split deliberately:
 
 - **Agent prompts (`agents/*.md`)** hold the reasoning, decisions, and safety prose. Things a model needs to *judge* stay here.
 - **Scripts (`scripts/*.sh`)** hold the deterministic shell — JSON reads/writes, state transitions, gates. Things a computer should *execute the same way every time* live here.
+- **User config (`~/.superhuman/preferences.md`)** holds what the *user* wants. Everything else under `~/.superhuman/` is machine-written state the plugin owns; this one file is theirs, and only `/preferences` writes it on their behalf.
 
 When you find yourself writing more than a couple of lines of `bash`/`jq` inside an agent prompt, extract it to `scripts/` and call it from the prompt. That keeps prompts short (cheaper to load per phase) and makes the logic testable.
 

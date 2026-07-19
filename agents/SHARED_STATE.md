@@ -47,6 +47,26 @@ Repo-agnostic: `~/.superhuman/global/`
 | `lessons_global.jsonl` | lesson-distiller | planner, builder, merge-probability-scorer |
 | `lesson_regressions.jsonl` | lesson-distiller | merge-probability-scorer, future `/contribution-dashboard` |
 
+User-owned: `~/.superhuman/`
+
+| File | Owner | Readers |
+|------|-------|---------|
+| `preferences.md` | **user** (form: `/preferences`) | repo-finder |
+
+`preferences.md` sits at the root of `~/.superhuman/`, not under `global/`, and
+the location is the point: `global/` is **cross-repo state**, mostly written by
+agents (`repo-shortlist.json`, `repo_cooldown.json`, `merge_outcomes.jsonl`) with
+a couple of user-edited exceptions (`repo_blocklist.json`). `preferences.md` is
+not state at all — it is *input*, the only file here that exists purely to tell
+the plugin what you want. No agent writes it; `/preferences` writes it on your
+behalf, and repo-finder only reads it.
+
+Its `## Filters` block is mechanical (parsed by `scripts/lib/preferences.sh`,
+compiled to search qualifiers by `scripts/repo-finder/build_queries.sh`). Its
+`## Notes` block is prose the agent applies at tie-breaks and issue selection
+only — never to a numeric score, and always disclosed in the shortlist's `notes`
+field when it did.
+
 `<owner-repo>` is formed as `<owner>-<repo>` (single hyphen; slash replaced).
 Example: `apache/airflow` → `apache-airflow`.
 

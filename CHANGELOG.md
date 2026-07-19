@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- **User search preferences (`/preferences`, `~/.superhuman/preferences.md`).** `/repo-finder`'s filters were constants baked into the agent prompt (`language:java`, `language:python`), and no command accepted a preference — ask for Go, get Python. They are now sourced from a file the **user** owns. `## Filters` (`languages`, `topics`, `stars`) is mechanical: parsed by `scripts/lib/preferences.sh`, compiled 1:1 into GitHub search qualifiers by `scripts/repo-finder/build_queries.sh`. `## Notes` is prose the agent applies at tie-breaks and issue selection only — never to a numeric score, and disclosed in the shortlist's `notes` field when it does. `topic[:min_stars]` gives one topic its own floor; `any` is reserved and compiles to a query with no `topic:` qualifier; `stars` is a floor and there is no ceiling (a range is a loud error, not a quiet cap). `/repo-finder` gains `--lang` / `--topic` / `--min-stars` overrides that shape one run and never persist. No preferences file means `DEFAULT_PROFILE`, byte-identical to the queries the agent carried inline, so `/contribute` on a fresh machine cannot regress. Covered by `tests/scripts/test_parse_preferences.sh` and `test_build_queries.sh` (network-free, bash 3.2-clean).
+
+### Changed
+- **Query shape follows the qualifier asymmetry.** Repeated `language:` unions; repeated `topic:` **intersects**. So languages collapse into one query and each topic gets its own — query count is `|topics|`, and adding a language costs zero queries. Emitting two `topic:` qualifiers on one line silently returns only repos tagged with *every* topic, often none, with exit 0 and no error; `build_queries.sh` refuses to emit one. Same class of silent failure: a typo'd qualifier key and a parenthesized `OR` both return `total_count: 0` with exit 0, so both are rejected at emit time rather than trusted.
+
+### Removed
+- **`repo-finder`'s Category Preference Order and its `3e` category bonus (10%).** With filtering server-side, every candidate matches the user's filters by construction, so a bonus for matching is a constant added to every row and ranks nothing. Its weight went to signals that discriminate: responsiveness 30 → **35%**, outside-contributor track 20 → **25%**.
+
 ## [0.6.4] — 2026-07-13
 
 ## [0.6.3] — 2026-07-12

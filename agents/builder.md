@@ -71,7 +71,11 @@ edit, check whether its path is present in `entries`.
 ```bash
 GEN="$STATE_DIR/generated_files.json"
 if [ -f "$GEN" ]; then
-  for f in $PLAN_EDIT_FILES; do
+  # One path per line. `for f in $PLAN_EDIT_FILES` would need the shell to split an
+  # unquoted expansion; zsh does not, so every path glues into one string, matches
+  # no entry, and this guard silently passes.
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
     MATCH=$(jq --arg p "$f" '.entries[] | select(.path == $p)' "$GEN")
     if [ -n "$MATCH" ]; then
       RC=$(jq -r '.regenerate_cmd // "null"' <<<"$MATCH")
@@ -95,7 +99,9 @@ EOF
         git -C "$WORKDIR" add "$f"
       fi
     fi
-  done
+  done <<PLAN_FILES
+$PLAN_EDIT_FILES
+PLAN_FILES
 fi
 ```
 
@@ -198,9 +204,11 @@ LANG=$(jq -r '.language // ""' "$STATE_DIR/repo_profile.json" 2>/dev/null)
 # Changed-files list = the plan's touch list, one path per line.
 CF_TMP="$STATE_DIR/.build_changed.$$"
 : > "$CF_TMP"
-for f in $PLAN_EDIT_FILES; do
+while IFS= read -r f; do
   [ -n "$f" ] && printf '%s\n' "$f" >> "$CF_TMP"
-done
+done <<PLAN_FILES
+$PLAN_EDIT_FILES
+PLAN_FILES
 
 LESSONS_JSON=$("${CLAUDE_PLUGIN_ROOT}/scripts/lessons/select_lessons.sh" \
   --repo "$OWNER_REPO" ${LANG:+--lang "$LANG"} --changed-files "$CF_TMP" \
