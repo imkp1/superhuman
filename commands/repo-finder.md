@@ -116,7 +116,14 @@ if [ -n "$LANGS$TOPICS$MIN_STARS" ]; then
   # a `## Notes` line that happens to begin `languages:`/`topics:`/`stars:` (copied
   # prose) must never be mistaken for a hard filter.
   FILTERS=""
-  [ -f "$SAVED" ] && FILTERS=$(awk '/^## Filters/{f=1;next} /^## /{f=0} f' "$SAVED")
+  # Detect the block with the SAME matcher scripts/lib/preferences.sh uses
+  # (case-insensitive, spacing-tolerant). A divergent 'exact ## Filters' reader
+  # silently fails to inherit saved axes on a '## filters' file and searches with
+  # defaults instead — the silent-wrong-result this whole feature guards against.
+  [ -f "$SAVED" ] && FILTERS=$(awk '
+    /^##[ \t]+/ { f = ($0 ~ /^##[ \t]*[Ff]ilters[ \t]*$/); next }
+    f
+  ' "$SAVED")
   if [ -z "$LANGS" ]; then
     LANGS=$(printf '%s\n' "$FILTERS" | sed -n 's/^[[:space:]]*languages:[[:space:]]*//p' | head -1)
   fi

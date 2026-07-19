@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Removed
 - **`repo-finder`'s Category Preference Order and its `3e` category bonus (10%).** With filtering server-side, every candidate matches the user's filters by construction, so a bonus for matching is a constant added to every row and ranks nothing. Its weight went to signals that discriminate: responsiveness 30 → **35%**, outside-contributor track 20 → **25%**.
 
+### Fixed
+- **A `preferences.md` with no `## Filters` block no longer dead-ends the scan.** A file carrying only `## Notes` (or an empty `## Filters` block) compiled to a catch-all and aborted `repo-finder` with `exit 10` and a misleading "`topics: any` with no languages" error the user never wrote — leaving `/contribute` with an empty shortlist. Such a file now means "default filters, plus advisory notes" and falls back to `DEFAULT_PROFILE`. A `## Filters` block with a real typo (`langauges: go`) still fails loud, so the fallback never swallows a malformed filter. New `prefs_has_filters` helper in `scripts/lib/preferences.sh`; covered by `test_build_queries.sh`.
+- **`/repo-finder` overrides now inherit saved axes from a non-canonical `## filters` header.** The override path (`--lang`/`--topic`/`--min-stars`) read the saved profile with an exact, case-sensitive `## Filters` matcher while `preferences.sh` accepts `## filters` and spacing variants — so `/repo-finder --topic cli` on a hand-edited lowercase-header profile silently dropped the saved `languages`/`stars` and searched with defaults. Both readers now use the same detector. Covered by the new `test_repo_finder_override_inherit.sh`.
+
 ## [0.6.4] — 2026-07-13
 
 ## [0.6.3] — 2026-07-12

@@ -121,7 +121,12 @@ nudge_once() {
   fi
 }
 
-if [ ! -f "$PREFS" ]; then
+# A file that exists but declares no ## Filters content (only ## Notes, or an
+# empty block) means "default filters, plus advisory notes" — not a catch-all to
+# reject. Fall back to DEFAULT_PROFILE. A block WITH content still goes to the
+# parser below, which fails loud on a typo, so this never swallows a malformed
+# filter (see the notes-only + malformed-abort cases in test_build_queries.sh).
+if [ ! -f "$PREFS" ] || ! prefs_has_filters "$PREFS"; then
   nudge_once
   while IFS= read -r q; do
     [ -n "$q" ] && emit "$q"

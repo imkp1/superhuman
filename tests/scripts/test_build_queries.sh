@@ -227,6 +227,37 @@ bash "$BUILD" --file "$tmpdir/bad.md" --no-nudge >/dev/null 2>&1
 rc=$?
 [ "$rc" = "10" ] || fail "malformed preferences must exit 10, got $rc (never fall back to defaults)"
 
+# ---------------------------------------------------------------------------
+# A file with no ## Filters CONTENT is "default filters + advisory notes", NOT a
+# catch-all to reject. It must fall back to DEFAULT_PROFILE, never abort with the
+# misleading 'topics: any with no languages' error the user never wrote. The
+# malformed-abort test above guards the other direction: a Filters block WITH a
+# bad line still exits 10, so the fallback can never swallow a real typo.
+# ---------------------------------------------------------------------------
+
+# 12. Notes-only file (no ## Filters block at all) => DEFAULT_PROFILE, exit 0.
+write notes_only <<'EOF'
+## Notes
+Prefer small, focused libraries. I'd rather fix bugs than add features.
+EOF
+run notes_only > "$tmpdir/notes_only.txt" \
+  || fail "notes-only preferences.md aborted the scan instead of using defaults"
+diff -u "$GOLDEN" "$tmpdir/notes_only.txt" \
+  || fail "notes-only file did not fall back to the default profile"
+
+# 12a. An empty ## Filters block (header, no filter lines) is also 'nothing
+# specified' => DEFAULT_PROFILE, not a catch-all abort.
+write empty_filters <<'EOF'
+## Filters
+
+## Notes
+just some guidance
+EOF
+run empty_filters > "$tmpdir/empty_filters.txt" \
+  || fail "empty ## Filters block aborted the scan instead of using defaults"
+diff -u "$GOLDEN" "$tmpdir/empty_filters.txt" \
+  || fail "empty ## Filters block did not fall back to the default profile"
+
 # 11. Determinism: same profile, two runs, byte-identical output.
 [ "$(run cross3)" = "$(run cross3)" ] || fail "build is not deterministic"
 
