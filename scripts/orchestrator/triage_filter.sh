@@ -79,8 +79,10 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
   # A claim is often worded as an intention to act rather than a patch in hand.
   # "this is valid, we will look into it" confirms the defect and takes it in one
   # sentence — which is why the claim test runs before the signal tiering below.
+  # "on our side" only claims the work when it is attached to an intent to act:
+  # "the regression is on our side" owns the defect and invites a fix.
   + "|we.ll look into|will look into|looking into (this|it) on our"
-  + "|noted (it )?(on our side|internally)|on our (side|end)|taking (this|it) on") as $claimed
+  + "|noted (it )?(on our side|internally)|taking (this|it) on")             as $claimed
 
   # An outsider saying "I would like to work on this" is not an assignee, so the
   # assignee test cannot see the claim. Windowed, unlike the maintainer test: a
@@ -126,26 +128,32 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
   | ($i.labels | map(.name | ascii_downcase))                              as $L
   | ($mc | map(.body // "") | join("\n") | ascii_downcase)                 as $mbody
 
-  # Grade only comments that carry prose. Strip links and bare @mentions first: a
-  # comment that is only a pointer to somewhere else states no position on this
-  # issue, and no sentiment tier can read one. The 15-char floor is what is left
-  # after stripping — "cc @someone for the quant path" survives it, a bare URL
-  # does not.
+  # Grade only what is left after stripping links and bare @mentions: a comment
+  # that is only a pointer somewhere else states no position on this issue, and no
+  # sentiment tier can read one.
   | ($mca | map((.body // "")
                 | ascii_downcase
                 | gsub("https?://\\S+"; " ")
                 | gsub("@[a-z0-9_-]+"; " ")
                 | gsub("\\s+"; " ") | sub("^ +"; "") | sub(" +$"; ""))
-          | map(select(length >= 15)))                                  as $gradeable
-  | ($gradeable | join("\n"))                                           as $gbody
-  | (if   ($gradeable | length) == 0    then "none"
-     elif ($gbody | test($invites))     then "invites_pr"
-     elif ($gbody | test($confirms))    then "confirms"
-     else "neutral" end)                                                as $signal
+          | map(select(length > 0)))                                    as $stripped
+  | ($stripped | join("\n"))                                            as $gbody
+  # Match before measuring. The floor separates a remark from a pointer, so it
+  # decides neutral-or-none only — applied first it would grade "PRs welcome!"
+  # (12 chars, the strongest signal there is) as no signal at all.
+  | (if   ($stripped | length) == 0          then "none"
+     elif ($gbody | test($invites))          then "invites_pr"
+     elif ($gbody | test($confirms))         then "confirms"
+     elif ($stripped | any(length >= 15))    then "neutral"
+     else "none" end)                                                   as $signal
 
   # Non-maintainer claims, still inside the window.
   | ($human | map(select((.authorAssociation | IN("OWNER","MEMBER","COLLABORATOR")) | not))
+           # `// ""` is not enough: an undated comment must not reach
+           # fromdateiso8601, which throws on null and aborts the whole batch.
+           # Undated reads as old, so the claim expires rather than fencing off.
            | map(select(((.body // "") | ascii_downcase | test($outsider_claim))
+                        and (((.createdAt // "") | length) > 0)
                         and ((.createdAt | fromdateiso8601) > ($now - $claim_ttl))))
            | length)                                                    as $outsider_live
 

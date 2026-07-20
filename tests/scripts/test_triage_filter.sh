@@ -142,7 +142,25 @@ cat > "$tmpdir/issues.json" <<EOF
    "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}],
    "comments": [{"authorAssociation": "MEMBER", "author": {"login": "maint-b"},
      "body": "Reproduced on main — the second join has the same defect.",
-     "createdAt": "$OLD"}]}
+     "createdAt": "$OLD"}]},
+
+  {"number": 920, "title": "Terse blessing is still a blessing",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}],
+   "comments": [{"authorAssociation": "MEMBER", "author": {"login": "maint-b"},
+     "body": "PRs welcome!", "createdAt": "$OLD"}]},
+
+  {"number": 921, "title": "Owning the defect is not claiming the fix",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}],
+   "comments": [{"authorAssociation": "MEMBER", "author": {"login": "maint-b"},
+     "body": "Thanks — reproduced. The regression is on our side, not in your config.",
+     "createdAt": "$OLD"}]},
+
+  {"number": 922, "title": "Comment with no timestamp must not abort the batch",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}],
+   "comments": [{"authorAssociation": "NONE", "author": {"login": "eager-newcomer"},
+      "body": "I would like to work on this."},
+     {"authorAssociation": "MEMBER", "author": {"login": "maint-b"},
+      "body": "Reproduced, the parser drops the last byte.", "createdAt": "$OLD"}]}
 ]
 EOF
 
@@ -314,5 +332,19 @@ want 917 KEEP "bare link is not a defect signal"
 
 # A union-only lead still earns no signal, whatever they wrote.
 [ "$(field 904 maintainer_signal)" = "none" ] || { echo "FAIL #904 signal: got '$(field 904 maintainer_signal)'"; exit 1; }
+
+# The strongest signal is also the shortest one anyone writes. A prose floor
+# applied before the match would grade this as no signal at all.
+want 920 KEEP "terse invite"
+[ "$(field 920 maintainer_signal)" = "invites_pr" ] || { echo "FAIL #920 signal: got '$(field 920 maintainer_signal)'"; exit 1; }
+
+# "on our side" attached to the defect owns the bug; attached to the work claims
+# it. Only the second is a skip.
+want 921 KEEP "maintainer owns the defect without claiming the fix"
+[ "$(field 921 maintainer_signal)" = "confirms" ] || { echo "FAIL #921 signal: got '$(field 921 maintainer_signal)'"; exit 1; }
+
+# A comment can serialize without createdAt, and `null | fromdateiso8601` throws,
+# which would abort the batch and take every other issue with it.
+want 922 KEEP "undated comment does not abort the batch"
 
 echo "OK test_triage_filter.sh"
