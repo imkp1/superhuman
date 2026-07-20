@@ -75,7 +75,29 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
   + "|i.m working on|working on (a fix|this)"
   + "|(already |should have )?fixed (it |this )?in [a-z0-9.@/#-]"
   + "|(fix|patch) (has )?landed|landed in|resolved (in|by) (#|[a-z0-9])"
-  + "|(fix|pr) (is )?incoming")                                             as $claimed
+  + "|(fix|pr) (is )?incoming"
+  # A claim is often worded as an intention to act rather than a patch in hand.
+  # "this is valid, we will look into it" confirms the defect and takes it in one
+  # sentence — which is why the claim test runs before the signal tiering below.
+  + "|we.ll look into|will look into|looking into (this|it) on our"
+  + "|noted (it )?(on our side|internally)|on our (side|end)|taking (this|it) on") as $claimed
+
+  # An outsider saying "I would like to work on this" is not an assignee, so the
+  # assignee test cannot see the claim. Windowed, unlike the maintainer test: a
+  # drive-by claim nobody acted on must not fence the issue off forever.
+  | ("i.d like to work on|i would like to work on|can i (take|work on|pick up)"
+  + "|i.ll (take|work on|pick) (this|it)|assign (this|it) to me"
+  + "|i.m (going to |gonna )?work(ing)? on (this|it)"
+  + "|(may|could) i (take|work on) (this|it)")                      as $outsider_claim
+  | 1209600                                                         as $claim_ttl
+
+  # Association makes a comment gradeable; it does not make it approval. The text
+  # sets the grade.
+  | ("prs? (are )?welcome|welcome a (pr|patch)|happy to (review|take a pr|accept)"
+  + "|feel free to (submit|open|send)|would (accept|welcome) a (pr|patch)"
+  + "|go ahead and (open|submit)|contributions? welcome")                 as $invites
+  | ("reproduc|confirmed|i see the same|can confirm|this is (valid|a bug|indeed)"
+  + "|good catch|you.re right|nice find|makes sense to me")               as $confirms
 
   # Announcements and containers wear defect labels. A pinned "the project moved"
   # notice earns a maintainer taxonomy label and every engagement signal the gate
@@ -103,6 +125,29 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
     )))                                                                    as $mca
   | ($i.labels | map(.name | ascii_downcase))                              as $L
   | ($mc | map(.body // "") | join("\n") | ascii_downcase)                 as $mbody
+
+  # Grade only comments that carry prose. Strip links and bare @mentions first: a
+  # comment that is only a pointer to somewhere else states no position on this
+  # issue, and no sentiment tier can read one. The 15-char floor is what is left
+  # after stripping — "cc @someone for the quant path" survives it, a bare URL
+  # does not.
+  | ($mca | map((.body // "")
+                | ascii_downcase
+                | gsub("https?://\\S+"; " ")
+                | gsub("@[a-z0-9_-]+"; " ")
+                | gsub("\\s+"; " ") | sub("^ +"; "") | sub(" +$"; ""))
+          | map(select(length >= 15)))                                  as $gradeable
+  | ($gradeable | join("\n"))                                           as $gbody
+  | (if   ($gradeable | length) == 0    then "none"
+     elif ($gbody | test($invites))     then "invites_pr"
+     elif ($gbody | test($confirms))    then "confirms"
+     else "neutral" end)                                                as $signal
+
+  # Non-maintainer claims, still inside the window.
+  | ($human | map(select((.authorAssociation | IN("OWNER","MEMBER","COLLABORATOR")) | not))
+           | map(select(((.body // "") | ascii_downcase | test($outsider_claim))
+                        and ((.createdAt | fromdateiso8601) > ($now - $claim_ttl))))
+           | length)                                                    as $outsider_live
 
   # (24h rule) an issue younger than a day has not been triaged; racing to it
   # produces noise PRs.
@@ -139,6 +184,9 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
     elif ($mbody | test($claimed)) then
       {verdict: "SKIP", number: $i.number,
        reason: "maintainer is already fixing it"}
+    elif $outsider_live > 0 then
+      {verdict: "SKIP", number: $i.number,
+       reason: "claimed — another contributor said they are taking it"}
     else
       # Carry the issue payload, not just a verdict on a number. The Step-4 rubric
       # scores title, labels, body and createdAt, and the agent contract forbids
@@ -150,6 +198,7 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
        createdAt: $i.createdAt,
        maintainer_commented: ($mc | length > 0),
        maintainer_comment_assoc: ($mca | length > 0),
+       maintainer_signal: $signal,
        last_maintainer_comment: ($mc | map(.createdAt) | max)}
     end
 ' "$ISSUES"

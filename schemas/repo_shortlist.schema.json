@@ -80,7 +80,10 @@
               "title":                   {"type": "string"},
               "type":                    {"type": "string"},
               "labels":                  {"type": "array", "items": {"type": "string"}},
-              "has_maintainer_approval": {"type": "boolean"},
+              "maintainer_signal": {
+                "type": "string",
+                "enum": ["invites_pr", "confirms", "neutral", "none"]
+              },
               "issue_score":             {"type": "number"},
               "url":                     {"type": "string"}
             }

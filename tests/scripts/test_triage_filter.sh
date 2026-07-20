@@ -13,6 +13,8 @@ trap 'rm -rf "$tmpdir"' EXIT
 NOW=1783814400
 OLD="2026-07-01T00:00:00Z"   # 11 days old — clears the 24h rule
 FRESH="2026-07-11T18:00:00Z" # 6 hours old  — must be dropped
+RECENT="2026-07-10T00:00:00Z" # 2 days old  — a claim this fresh is still live
+STALE="2026-05-20T00:00:00Z"  # 53 days old — a claim this old is abandoned
 
 printf 'unionlead\n' > "$tmpdir/maintainers.txt"
 
@@ -106,7 +108,41 @@ cat > "$tmpdir/issues.json" <<EOF
   {"number": 913, "title": "[v4] Loader raises on a valid checkpoint",
    "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}],
    "comments": [{"authorAssociation": "MEMBER", "author": {"login": "maint-b"},
-     "body": "We can't fix bugs on v4 — please upgrade to v5.", "createdAt": "$OLD"}]}
+     "body": "We can't fix bugs on v4 — please upgrade to v5.", "createdAt": "$OLD"}]},
+
+  {"number": 914, "title": "Indexer produces incomplete examples for one doc format",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}],
+   "comments": [{"authorAssociation": "COLLABORATOR", "author": {"login": "maint-d"},
+     "body": "Thanks for the report, this is valid. We have noted it on our side and will look into supporting that format.",
+     "createdAt": "$OLD"}]},
+
+  {"number": 915, "title": "Batched decode corrupts every row after the first",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "kind:bug"}],
+   "comments": [{"authorAssociation": "NONE", "author": {"login": "eager-newcomer"},
+     "body": "Hi! I'd like to work on this issue if it's still available.",
+     "createdAt": "$RECENT"}]},
+
+  {"number": 916, "title": "Same claim, long abandoned",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "kind:bug"}],
+   "comments": [{"authorAssociation": "NONE", "author": {"login": "eager-newcomer"},
+     "body": "Hi! I'd like to work on this issue if it's still available.",
+     "createdAt": "$STALE"}]},
+
+  {"number": 917, "title": "Usage totals are summed across tool-loop calls",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}],
+   "comments": [{"authorAssociation": "COLLABORATOR", "author": {"login": "maint-d"},
+     "body": "https://example.invalid/acme/repo/pull/1", "createdAt": "$OLD"}]},
+
+  {"number": 918, "title": "Quantized matmul ignores the leading batch dimension",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}],
+   "comments": [{"authorAssociation": "MEMBER", "author": {"login": "maint-b"},
+     "body": "cc @maint-c for the quantization path", "createdAt": "$OLD"}]},
+
+  {"number": 919, "title": "Join is unsanitised on the secondary path",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}],
+   "comments": [{"authorAssociation": "MEMBER", "author": {"login": "maint-b"},
+     "body": "Reproduced on main — the second join has the same defect.",
+     "createdAt": "$OLD"}]}
 ]
 EOF
 
@@ -251,5 +287,32 @@ esac
 # KEEP invites the caller to score it.
 [ "$(field 21795 title)" = "null" ] \
   || { echo "FAIL #21795 is a SKIP and must not carry a title"; exit 1; }
+
+# A maintainer can confirm a defect and claim it in the same breath. Grading the
+# sentiment first scores it as approval and never reaches the claim, so the claim
+# test must run before the tiering.
+want 914 SKIP "maintainer confirmed it and claimed it"
+want_reason 914 already
+
+# A non-maintainer claim is not an assignment, so the assignee test cannot see it.
+want 915 SKIP "outside contributor claimed it recently"
+want_reason 915 claimed
+
+# ...but a claim nobody acted on must not fence the issue off forever.
+want 916 KEEP "stale claim is abandoned, not competing"
+
+# Signal tiers. Association is the prerequisite; the comment text sets the grade.
+[ "$(field 903 maintainer_signal)" = "invites_pr" ] || { echo "FAIL #903 signal: got '$(field 903 maintainer_signal)'"; exit 1; }
+[ "$(field 911 maintainer_signal)" = "invites_pr" ] || { echo "FAIL #911 signal: got '$(field 911 maintainer_signal)'"; exit 1; }
+[ "$(field 919 maintainer_signal)" = "confirms" ]   || { echo "FAIL #919 signal: got '$(field 919 maintainer_signal)'"; exit 1; }
+[ "$(field 918 maintainer_signal)" = "neutral" ]    || { echo "FAIL #918 signal: got '$(field 918 maintainer_signal)'"; exit 1; }
+
+# A comment with no prose cannot be graded as prose. A bare link is a pointer,
+# not an endorsement, and no sentiment tier can read one.
+want 917 KEEP "bare link is not a defect signal"
+[ "$(field 917 maintainer_signal)" = "none" ] || { echo "FAIL #917 signal: got '$(field 917 maintainer_signal)'"; exit 1; }
+
+# A union-only lead still earns no signal, whatever they wrote.
+[ "$(field 904 maintainer_signal)" = "none" ] || { echo "FAIL #904 signal: got '$(field 904 maintainer_signal)'"; exit 1; }
 
 echo "OK test_triage_filter.sh"
