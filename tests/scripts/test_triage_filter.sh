@@ -160,7 +160,33 @@ cat > "$tmpdir/issues.json" <<EOF
    "comments": [{"authorAssociation": "NONE", "author": {"login": "eager-newcomer"},
       "body": "I would like to work on this."},
      {"authorAssociation": "MEMBER", "author": {"login": "maint-b"},
-      "body": "Reproduced, the parser drops the last byte.", "createdAt": "$OLD"}]}
+      "body": "Reproduced, the parser drops the last byte.", "createdAt": "$OLD"}]},
+
+  {"number": 923, "title": "Retry backoff collapses under a slow upstream",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}],
+   "comments": [{"authorAssociation": "MEMBER", "author": {"login": "maint-b"},
+     "body": "I can't reproduce this on main. What version are you on?",
+     "createdAt": "$OLD"}]},
+
+  {"number": 924, "title": "One maintainer missed it, another did not",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "bug"}],
+   "comments": [{"authorAssociation": "MEMBER", "author": {"login": "maint-b"},
+      "body": "Unable to reproduce on my machine.", "createdAt": "$OLD"},
+     {"authorAssociation": "COLLABORATOR", "author": {"login": "maint-d"},
+      "body": "Reproduced on main — the second decode path has the same defect.",
+      "createdAt": "$OLD"}]},
+
+  {"number": 925, "title": "Asking about an issue is not claiming it",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "kind:bug"}],
+   "comments": [{"authorAssociation": "NONE", "author": {"login": "curious-passerby"},
+     "body": "Can I take a look at this? Curious what the root cause is.",
+     "createdAt": "$RECENT"}]},
+
+  {"number": 926, "title": "An anchored claim is still a claim",
+   "createdAt": "$OLD", "assignees": [], "labels": [{"name": "kind:bug"}],
+   "comments": [{"authorAssociation": "NONE", "author": {"login": "eager-newcomer"},
+     "body": "Can I pick up this one? Happy to send a patch.",
+     "createdAt": "$RECENT"}]}
 ]
 EOF
 
@@ -346,5 +372,23 @@ want 921 KEEP "maintainer owns the defect without claiming the fix"
 # A comment can serialize without createdAt, and `null | fromdateiso8601` throws,
 # which would abort the batch and take every other issue with it.
 want 922 KEEP "undated comment does not abort the batch"
+
+# The `reproduc` stem matches its own negation. A maintainer who could not
+# reproduce states the opposite of a confirmation and must not be paid +3 for it —
+# the exact miscredit this grader exists to stop, one layer down.
+want 923 KEEP "failure to reproduce is not a decline"
+[ "$(field 923 maintainer_signal)" = "neutral" ] || { echo "FAIL #923 signal: got '$(field 923 maintainer_signal)'"; exit 1; }
+
+# Negations are deleted from the graded text, not short-circuited on: one
+# maintainer missing it cannot mute another who reproduced it.
+[ "$(field 924 maintainer_signal)" = "confirms" ] || { echo "FAIL #924 signal: got '$(field 924 maintainer_signal)'"; exit 1; }
+
+# "take a look at this" is a question about the issue, not a claim on it. Every
+# claim alternative has to anchor on its object or `take` swallows the phrase.
+want 925 KEEP "asking about an issue is not claiming it"
+
+# ...and the anchor must not narrow so far that a real claim slips through.
+want 926 SKIP "anchored outsider claim still skips"
+want_reason 926 claimed
 
 echo "OK test_triage_filter.sh"

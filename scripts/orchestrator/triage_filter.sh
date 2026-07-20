@@ -87,7 +87,10 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
   # An outsider saying "I would like to work on this" is not an assignee, so the
   # assignee test cannot see the claim. Windowed, unlike the maintainer test: a
   # drive-by claim nobody acted on must not fence the issue off forever.
-  | ("i.d like to work on|i would like to work on|can i (take|work on|pick up)"
+  # Every alternative anchors on its object. Unanchored, `take` swallows "take a
+  # look at this" and a question about the issue reads as a claim on it.
+  | ("i.d like to work on|i would like to work on"
+  + "|can i (take|work on|pick up) (this|it)"
   + "|i.ll (take|work on|pick) (this|it)|assign (this|it) to me"
   + "|i.m (going to |gonna )?work(ing)? on (this|it)"
   + "|(may|could) i (take|work on) (this|it)")                      as $outsider_claim
@@ -100,6 +103,14 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
   + "|go ahead and (open|submit)|contributions? welcome")                 as $invites
   | ("reproduc|confirmed|i see the same|can confirm|this is (valid|a bug|indeed)"
   + "|good catch|you.re right|nice find|makes sense to me")               as $confirms
+  # A maintainer who could not reproduce is stating the opposite of a confirmation,
+  # and the `reproduc` stem cannot tell the two apart. Not a decline either — the
+  # report may still be sound — so these phrases are deleted from the graded text
+  # rather than skipped on, leaving the comment to fall to the neutral floor.
+  # Deleted, not short-circuited: a second maintainer who did reproduce it must
+  # still be able to earn `confirms` on the same issue.
+  | ("(can.t|cannot|can not|could ?n.t|could not|unable to|failed to|fails to)"
+  + " reproduc\\w*|not reproducible|irreproducible|no repro\\b")          as $no_repro
 
   # Announcements and containers wear defect labels. A pinned "the project moved"
   # notice earns a maintainer taxonomy label and every engagement signal the gate
@@ -138,12 +149,13 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
                 | gsub("\\s+"; " ") | sub("^ +"; "") | sub(" +$"; ""))
           | map(select(length > 0)))                                    as $stripped
   | ($stripped | join("\n"))                                            as $gbody
+  | ($gbody | gsub($no_repro; " "))                                     as $gbody_pos
   # Match before measuring. The floor separates a remark from a pointer, so it
   # decides neutral-or-none only — applied first it would grade "PRs welcome!"
   # (12 chars, the strongest signal there is) as no signal at all.
   | (if   ($stripped | length) == 0          then "none"
      elif ($gbody | test($invites))          then "invites_pr"
-     elif ($gbody | test($confirms))         then "confirms"
+     elif ($gbody_pos | test($confirms))     then "confirms"
      elif ($stripped | any(length >= 15))    then "neutral"
      else "none" end)                                                   as $signal
 
