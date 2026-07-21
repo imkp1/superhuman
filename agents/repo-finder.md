@@ -575,7 +575,7 @@ fi
   2. A `good first issue` or `help wanted` label (explicit triage-accepted signal).
   3. A `kind:*` / `type:*` / `priority:*` / `severity:*` / `area:*` label (maintainer-applied taxonomy — NOT just `needs-triage` / `triage` / `status:need-triage` alone).
 
-  Why this gate exists: a `needs-triage`-only issue with zero maintainer comments is an untriaged feature request or unconfirmed bug report. Shipping a PR against it at Apache-/Airflow-class repos triggers a lazy-consensus or devlist redirect that structurally caps merge probability below 95% regardless of code quality. The prior `has_maintainer_approval` field was additive (+3 bonus), so issues without maintainer approval could still reach rank 1 via the other bonuses. This gate converts it to a prerequisite.
+  Why this gate exists: a `needs-triage`-only issue with zero maintainer comments is an untriaged feature request or unconfirmed bug report. Shipping a PR against it at Apache-/Airflow-class repos triggers a lazy-consensus or devlist redirect that structurally caps merge probability below 95% regardless of code quality. The maintainer-signal bonus is additive, so an issue no maintainer engaged with could otherwise reach rank 1 on the other bonuses alone. This gate converts engagement to a prerequisite.
 
   A bot is not a maintainer — exclude bot accounts from the comment test.
 
@@ -726,7 +726,7 @@ jq -r --rawfile m "$MAINTAINERS" \
     elif ((now - ($engaged | max)) / 86400 | floor) > $window then
       "SKIP \(.number): no maintainer engagement in \(((now - ($engaged | max)) / 86400 | floor))d (window \($window)d) — abandoned"
     else
-      "KEEP \(.number) engaged_days=\(((now - ($engaged | max)) / 86400 | floor)) maintainer_commented=\(.maintainer_commented) approval=\(.maintainer_comment_assoc)"
+      "KEEP \(.number) engaged_days=\(((now - ($engaged | max)) / 86400 | floor)) maintainer_commented=\(.maintainer_commented) signal=\(.maintainer_signal)"
     end
 ' "$SCRATCH/stage_a.jsonl"
 ```
@@ -751,14 +751,30 @@ visibly drop one. Apply the prose here, then say in `notes` that it did.
 - **Is a bug** (not a feature request): +3
 - **Has reproduction steps**: +2
 - **Labeled good-first-issue or help-wanted**: +2
-- **Maintainer commented with approval signal** ("PRs welcome", "happy to review"): +3. Requires `maintainer_comment_assoc` — a union-only commenter does not earn this bonus.
+- **Maintainer signal**, graded from `maintainer_signal`: `invites_pr` **+5** · `confirms` **+3** · `neutral` **+1** · `none` **0**. Association is the prerequisite, never the grade — a union-only commenter earns nothing here.
 - **Maintainer engaged within the last 28 days**: +2
 - **Issue age**, graded: 2–30d **+1** · 30–90d **0** · 90–365d **−1** · >365d **−2**. Scored, never hard-skipped — old is riskier, not worthless.
 - **Scope is small** (likely < 100 lines, single-file fix): +2
 
-Set `best_issue.has_maintainer_approval` from `maintainer_comment_assoc` — true only when GitHub reported a commenter on this issue as `OWNER`/`MEMBER`/`COLLABORATOR`. Never set it from `maintainer_commented`: that flag includes the wide 3c maintainer union, which is correct for passing the gate but too loose to call approval.
+Set `best_issue.maintainer_signal` from the `maintainer_signal` the triage filter
+emitted. Do not recompute it from `maintainer_comment_assoc`: association answers
+"did an account GitHub vouches for speak here", which is a prerequisite for being
+graded and not a grade. Never derive it from `maintainer_commented` either — that
+flag includes the wide 3c union, correct for passing the gate and too loose to
+read as endorsement.
 
-Label-only triage and union-only comments still pass the gate; they just record `has_maintainer_approval=false`. The field answers one question — "did an account GitHub vouches for as a maintainer speak on this issue?" — and the +3 approval bonus is the only thing that reads it.
+The filter grades on comment text, and only on text that is text: it strips links
+and bare mentions first, so a maintainer comment that is only a pointer somewhere
+else grades `none`. A pointer states no position on this issue.
+
+Read the graded comment yourself before accepting the tier. The filter matches
+prose with regexes and will misgrade: a refutation phrased in the project's own
+domain terms disputes the premise while matching none of the decline patterns.
+**If the maintainer disputes the premise, redirects it, or calls it
+working-as-intended, skip the issue outright** rather than scoring it down —
+zeroing the bonus still leaves bug + repro + small scope at 7, and labels plus
+recency clear the 8 threshold on their own. Record any tier you overrode in
+`notes`, so the regex gaps stay visible.
 
 If no issue scores 8+ after applying the hard filter, mark the repo as "no clear opportunity right now" and exclude from the final list.
 
@@ -854,7 +870,7 @@ needs that number to know the list is partial rather than the field being thin.
         "title": "issue title",
         "type": "bug",
         "labels": ["bug", "good first issue"],
-        "has_maintainer_approval": true,
+        "maintainer_signal": "invites_pr",
         "issue_score": 12,
         "url": "https://github.com/OWNER/REPO/issues/1234"
       },
@@ -880,7 +896,7 @@ Found N repos worth contributing to (searched M candidates).
 
 ## Top Pick
 **owner/repo#1234** — [issue title]
-- Maintainer approved: yes
+- Maintainer signal: invites a PR
 - Type: bug
 - Estimated scope: small (single file)
 - Median PR merge time: 2 days

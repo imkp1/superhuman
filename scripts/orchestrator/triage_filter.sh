@@ -75,7 +75,42 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
   + "|i.m working on|working on (a fix|this)"
   + "|(already |should have )?fixed (it |this )?in [a-z0-9.@/#-]"
   + "|(fix|patch) (has )?landed|landed in|resolved (in|by) (#|[a-z0-9])"
-  + "|(fix|pr) (is )?incoming")                                             as $claimed
+  + "|(fix|pr) (is )?incoming"
+  # A claim is often worded as an intention to act rather than a patch in hand.
+  # "this is valid, we will look into it" confirms the defect and takes it in one
+  # sentence — which is why the claim test runs before the signal tiering below.
+  # "on our side" only claims the work when it is attached to an intent to act:
+  # "the regression is on our side" owns the defect and invites a fix.
+  + "|we.ll look into|will look into|looking into (this|it) on our"
+  + "|noted (it )?(on our side|internally)|taking (this|it) on")             as $claimed
+
+  # An outsider saying "I would like to work on this" is not an assignee, so the
+  # assignee test cannot see the claim. Windowed, unlike the maintainer test: a
+  # drive-by claim nobody acted on must not fence the issue off forever.
+  # Every alternative anchors on its object. Unanchored, `take` swallows "take a
+  # look at this" and a question about the issue reads as a claim on it.
+  | ("i.d like to work on|i would like to work on"
+  + "|can i (take|work on|pick up) (this|it)"
+  + "|i.ll (take|work on|pick) (this|it)|assign (this|it) to me"
+  + "|i.m (going to |gonna )?work(ing)? on (this|it)"
+  + "|(may|could) i (take|work on) (this|it)")                      as $outsider_claim
+  | 1209600                                                         as $claim_ttl
+
+  # Association makes a comment gradeable; it does not make it approval. The text
+  # sets the grade.
+  | ("prs? (are )?welcome|welcome a (pr|patch)|happy to (review|take a pr|accept)"
+  + "|feel free to (submit|open|send)|would (accept|welcome) a (pr|patch)"
+  + "|go ahead and (open|submit)|contributions? welcome")                 as $invites
+  | ("reproduc|confirmed|i see the same|can confirm|this is (valid|a bug|indeed)"
+  + "|good catch|you.re right|nice find|makes sense to me")               as $confirms
+  # A maintainer who could not reproduce is stating the opposite of a confirmation,
+  # and the `reproduc` stem cannot tell the two apart. Not a decline either — the
+  # report may still be sound — so these phrases are deleted from the graded text
+  # rather than skipped on, leaving the comment to fall to the neutral floor.
+  # Deleted, not short-circuited: a second maintainer who did reproduce it must
+  # still be able to earn `confirms` on the same issue.
+  | ("(can.t|cannot|can not|could ?n.t|could not|unable to|failed to|fails to)"
+  + " reproduc\\w*|not reproducible|irreproducible|no repro\\b")          as $no_repro
 
   # Announcements and containers wear defect labels. A pinned "the project moved"
   # notice earns a maintainer taxonomy label and every engagement signal the gate
@@ -103,6 +138,36 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
     )))                                                                    as $mca
   | ($i.labels | map(.name | ascii_downcase))                              as $L
   | ($mc | map(.body // "") | join("\n") | ascii_downcase)                 as $mbody
+
+  # Grade only what is left after stripping links and bare @mentions: a comment
+  # that is only a pointer somewhere else states no position on this issue, and no
+  # sentiment tier can read one.
+  | ($mca | map((.body // "")
+                | ascii_downcase
+                | gsub("https?://\\S+"; " ")
+                | gsub("@[a-z0-9_-]+"; " ")
+                | gsub("\\s+"; " ") | sub("^ +"; "") | sub(" +$"; ""))
+          | map(select(length > 0)))                                    as $stripped
+  | ($stripped | join("\n"))                                            as $gbody
+  | ($gbody | gsub($no_repro; " "))                                     as $gbody_pos
+  # Match before measuring. The floor separates a remark from a pointer, so it
+  # decides neutral-or-none only — applied first it would grade "PRs welcome!"
+  # (12 chars, the strongest signal there is) as no signal at all.
+  | (if   ($stripped | length) == 0          then "none"
+     elif ($gbody | test($invites))          then "invites_pr"
+     elif ($gbody_pos | test($confirms))     then "confirms"
+     elif ($stripped | any(length >= 15))    then "neutral"
+     else "none" end)                                                   as $signal
+
+  # Non-maintainer claims, still inside the window.
+  | ($human | map(select((.authorAssociation | IN("OWNER","MEMBER","COLLABORATOR")) | not))
+           # `// ""` is not enough: an undated comment must not reach
+           # fromdateiso8601, which throws on null and aborts the whole batch.
+           # Undated reads as old, so the claim expires rather than fencing off.
+           | map(select(((.body // "") | ascii_downcase | test($outsider_claim))
+                        and (((.createdAt // "") | length) > 0)
+                        and ((.createdAt | fromdateiso8601) > ($now - $claim_ttl))))
+           | length)                                                    as $outsider_live
 
   # (24h rule) an issue younger than a day has not been triaged; racing to it
   # produces noise PRs.
@@ -139,6 +204,9 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
     elif ($mbody | test($claimed)) then
       {verdict: "SKIP", number: $i.number,
        reason: "maintainer is already fixing it"}
+    elif $outsider_live > 0 then
+      {verdict: "SKIP", number: $i.number,
+       reason: "claimed — another contributor said they are taking it"}
     else
       # Carry the issue payload, not just a verdict on a number. The Step-4 rubric
       # scores title, labels, body and createdAt, and the agent contract forbids
@@ -150,6 +218,7 @@ jq -c --rawfile m "$MAINTAINERS" --argjson now "$NOW" '
        createdAt: $i.createdAt,
        maintainer_commented: ($mc | length > 0),
        maintainer_comment_assoc: ($mca | length > 0),
+       maintainer_signal: $signal,
        last_maintainer_comment: ($mc | map(.createdAt) | max)}
     end
 ' "$ISSUES"
